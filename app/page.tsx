@@ -242,6 +242,217 @@ function GuardrailPanel({
   );
 }
 
+// ── Human evaluator form ─────────────────────────────────────────────────────
+function HumanEvalForm({
+  scenario,
+  policyName,
+  nonagenticVerdict,
+  nonagenticScore,
+  agenticVerdict,
+  agenticScore,
+  guardrailMode,
+  judgeModel,
+}: {
+  scenario: string;
+  policyName: string;
+  nonagenticVerdict: string | null;
+  nonagenticScore: number | null;
+  agenticVerdict: string | null;
+  agenticScore: number | null;
+  guardrailMode: string;
+  judgeModel: string;
+}) {
+  const [name, setName] = useState("");
+  const [agreesWithAi, setAgreesWithAi] = useState("");
+  const [noticedIssues, setNoticedIssues] = useState("");
+  const [responseQuality, setResponseQuality] = useState<number | null>(null);
+  const [policyAdjustment, setPolicyAdjustment] = useState("");
+  const [additionalComments, setAdditionalComments] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const primaryVerdict = nonagenticVerdict ?? agenticVerdict ?? "N/A";
+
+  const handleSubmit = async () => {
+    if (!agreesWithAi || !responseQuality) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch("/api/human-eval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          evaluatorName: name,
+          scenario,
+          policyName,
+          nonagenticVerdict,
+          nonagenticScore,
+          agenticVerdict,
+          agenticScore,
+          guardrailMode,
+          judgeModel,
+          agreesWithAi,
+          noticedIssues,
+          responseQuality,
+          policyAdjustment,
+          additionalComments,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Submission failed");
+      setSubmitted(true);
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
+        <p className="text-3xl mb-2">✓</p>
+        <p className="font-semibold text-green-800">Response saved!</p>
+        <p className="text-sm text-green-600 mt-1">Thank you for your evaluation.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border-2 border-indigo-100 rounded-xl p-6 space-y-5">
+      <div>
+        <h3 className="font-semibold text-slate-800">Your Human Evaluation</h3>
+        <p className="text-sm text-slate-500 mt-0.5">
+          The AI guardrail verdict was <strong>{primaryVerdict}</strong>. Share your own judgment below.
+        </p>
+      </div>
+
+      {/* Name */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 block mb-1">Your name (optional)</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Jane Smith"
+          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      </div>
+
+      {/* Agree with AI */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 block mb-2">
+          Do you agree with the AI&apos;s verdict ({primaryVerdict})?{" "}
+          <span className="text-red-500">*</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {["Agree", "Partially agree", "Disagree"].map((opt) => (
+            <button
+              key={opt}
+              onClick={() => setAgreesWithAi(opt)}
+              className={`px-4 py-2 rounded-lg text-sm border transition-all ${
+                agreesWithAi === opt
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Issues noticed */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 block mb-1">
+          What issues did YOU notice in the AI response?
+        </label>
+        <textarea
+          value={noticedIssues}
+          onChange={(e) => setNoticedIssues(e.target.value)}
+          placeholder="Describe any problems, risks, or policy violations you spotted..."
+          className="w-full h-24 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+        />
+      </div>
+
+      {/* Response quality */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 block mb-2">
+          Rate the AI response quality (1 = poor, 5 = excellent){" "}
+          <span className="text-red-500">*</span>
+        </label>
+        <div className="flex gap-2">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              onClick={() => setResponseQuality(n)}
+              className={`w-10 h-10 rounded-lg text-sm font-semibold border transition-all ${
+                responseQuality === n
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Policy adjustment */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 block mb-2">
+          Should this policy be adjusted?
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {["Stricter", "About right", "More lenient"].map((opt) => (
+            <button
+              key={opt}
+              onClick={() => setPolicyAdjustment(policyAdjustment === opt ? "" : opt)}
+              className={`px-4 py-2 rounded-lg text-sm border transition-all ${
+                policyAdjustment === opt
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Additional comments */}
+      <div>
+        <label className="text-sm font-medium text-slate-700 block mb-1">
+          Additional comments (optional)
+        </label>
+        <textarea
+          value={additionalComments}
+          onChange={(e) => setAdditionalComments(e.target.value)}
+          placeholder="Any other observations or suggestions..."
+          className="w-full h-20 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+        />
+      </div>
+
+      {submitError && (
+        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{submitError}</p>
+      )}
+
+      <button
+        onClick={handleSubmit}
+        disabled={!agreesWithAi || !responseQuality || submitting}
+        className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 hover:bg-indigo-700 flex items-center gap-2 transition-colors"
+      >
+        {submitting ? (
+          <><span className="animate-spin">↻</span> Saving...</>
+        ) : (
+          "📝 Submit Human Evaluation"
+        )}
+      </button>
+    </div>
+  );
+}
+
 // ── Saved evaluation type ────────────────────────────────────────────────────
 interface SavedEvaluation {
   id: string;
@@ -1048,6 +1259,20 @@ export default function Home() {
                   {saveFlash && (
                     <span className="text-sm text-green-600 font-medium">✓ Saved!</span>
                   )}
+                </div>
+
+                {/* Human evaluation form */}
+                <div className="border-t pt-6">
+                  <HumanEvalForm
+                    scenario={activeUserMessage}
+                    policyName={state.policy?.name ?? "Unknown"}
+                    nonagenticVerdict={state.nonAgenticResult?.overall_verdict ?? null}
+                    nonagenticScore={state.nonAgenticResult?.score ?? null}
+                    agenticVerdict={state.agenticResult?.overall_verdict ?? null}
+                    agenticScore={state.agenticResult?.score ?? null}
+                    guardrailMode={state.guardrailMode}
+                    judgeModel={judgeModel}
+                  />
                 </div>
               </>
             )}
