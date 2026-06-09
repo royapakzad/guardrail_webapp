@@ -1,4 +1,4 @@
-# Guardrails Demo — Mozilla.ai Workshop
+# Guardrails Demo 
 
 Interactive web demo comparing **agentic** vs **non-agentic** guardrail evaluation across five domains.
 
