@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ACM FAccT 2026 Tutorial — Contextual Evaluation of LLM Guardrails</title>
+  <meta name="description" content="ACM FAccT 2026 Tutorial: Contextual Evaluation of LLM Guardrails Across Languages and Agentic Systems by Roya Pakzad (Taraaz & Mozilla AI) and Daniel Nissani (Mozilla AI)." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --orange: #FF6640;
+      --orange-light: #FF8C69;
+      --dark: #0E0E0E;
+      --dark-2: #1A1A1A;
+      --dark-3: #242424;
+      --mid: #6B7280;
+      --light: #F9FAFB;
+      --white: #FFFFFF;
+      --border: #E5E7EB;
+      --indigo: #4F46E5;
+      --radius: 12px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--light);
+      color: var(--dark);
+      line-height: 1.6;
+    }
+
+    /* ── NAV ───────────────────────────────────────────── */
+    nav {
+      background: var(--dark);
+      padding: 0 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid var(--dark-3);
+    }
+    .nav-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+      gap: 2rem;
+    }
+    .nav-logos {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    .nav-logos img {
+      height: 28px;
+      width: auto;
+      filter: brightness(0) invert(1);
+      opacity: 0.9;
+    }
+    .nav-logos .logo-divider {
+      width: 1px;
+      height: 20px;
+      background: #333;
+    }
+    .nav-links {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+    }
+    .nav-links a {
+      color: #9CA3AF;
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--white); }
+
+    /* ── HERO ──────────────────────────────────────────── */
+    .hero {
+      background: var(--dark);
+      padding: 5rem 2rem 4rem;
+      color: var(--white);
+    }
+    .hero-inner {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    .conference-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255,102,64,0.12);
+      border: 1px solid rgba(255,102,64,0.3);
+      color: var(--orange-light);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.35rem 0.85rem;
+      border-radius: 100px;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: clamp(1.75rem, 4vw, 2.6rem);
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.25rem;
+      max-width: 780px;
+    }
+    .hero h1 span { color: var(--orange); }
+    .hero-type {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #6B7280;
+      margin-bottom: 0.5rem;
+    }
+    .authors {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1.75rem;
+    }
+    .author-chip {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 0.45rem 0.85rem;
+      border-radius: 100px;
+      font-size: 0.82rem;
+      color: #E5E7EB;
+    }
+    .author-chip .org {
+      color: #6B7280;
+      font-size: 0.72rem;
+    }
+
+    /* ── SECTION WRAPPER ───────────────────────────────── */
+    section { padding: 4rem 2rem; }
+    .section-inner { max-width: 860px; margin: 0 auto; }
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 0.6rem;
+    }
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.25rem;
+      color: var(--dark);
+    }
+
+    /* ── ABSTRACT ──────────────────────────────────────── */
+    .abstract-section { background: var(--white); border-top: 1px solid var(--border); }
+    .abstract-text {
+      font-size: 1rem;
+      color: #374151;
+      line-height: 1.8;
+      max-width: 780px;
+    }
+
+    /* ── DEMO CTA ──────────────────────────────────────── */
+    .demo-section { background: var(--dark); color: var(--white); }
+    .demo-card {
+      background: var(--dark-2);
+      border: 1px solid var(--dark-3);
+      border-radius: var(--radius);
+      padding: 2.5rem;
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .demo-card-text { flex: 1; min-width: 260px; }
+    .demo-card-text h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.6rem;
+    }
+    .demo-card-text p { font-size: 0.9rem; color: #9CA3AF; line-height: 1.6; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.7rem 1.4rem;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-orange {
+      background: var(--orange);
+      color: var(--white);
+    }
+    .btn-orange:hover { background: var(--orange-light); }
+    .btn-outline {
+      background: transparent;
+      color: var(--white);
+      border: 1px solid #3F3F3F;
+    }
+    .btn-outline:hover { border-color: #6B7280; background: rgba(255,255,255,0.04); }
+
+    /* ── SLIDES ────────────────────────────────────────── */
+    .slides-section { background: var(--light); }
+    .slides-placeholder {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 3rem 2rem;
+      text-align: center;
+      color: var(--mid);
+    }
+    .slides-placeholder p { font-size: 0.9rem; margin-top: 0.5rem; }
+    .slides-placeholder .placeholder-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 1rem;
+      background: #E5E7EB;
+      color: #374151;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      text-decoration: none;
+      cursor: default;
+      opacity: 0.6;
+    }
+
+    /* ── ACTIVITY ──────────────────────────────────────── */
+    .activity-section { background: var(--white); border-top: 1px solid var(--border); }
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-top: 1.5rem;
+      position: relative;
+    }
+    .steps::before {
+      content: '';
+      position: absolute;
+      left: 17px;
+      top: 20px;
+      bottom: 20px;
+      width: 2px;
+      background: var(--border);
+    }
+    .step {
+      display: flex;
+      gap: 1.25rem;
+      align-items: flex-start;
+      padding: 1rem 0;
+      position: relative;
+    }
+    .step-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--orange);
+      color: var(--white);
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+    .step-body h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .step-body p { font-size: 0.875rem; color: #4B5563; line-height: 1.6; }
+    .step-body a { color: var(--orange); text-decoration: none; }
+    .step-body a:hover { text-decoration: underline; }
+
+    /* ── RESOURCES ─────────────────────────────────────── */
+    .resources-section { background: var(--light); }
+    .resource-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .resource-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .resource-card:hover {
+      border-color: var(--orange);
+      box-shadow: 0 4px 16px rgba(255,102,64,0.08);
+    }
+    .resource-card .rc-tag {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--orange);
+    }
+    .resource-card h4 { font-size: 0.9rem; font-weight: 600; color: var(--dark); line-height: 1.4; }
+    .resource-card p { font-size: 0.78rem; color: var(--mid); line-height: 1.5; }
+    .resource-card .rc-url {
+      font-size: 0.72rem;
+      color: #9CA3AF;
+      margin-top: auto;
+      padding-top: 0.5rem;
+      word-break: break-all;
+    }
+
+    /* ── CONTACT ───────────────────────────────────────── */
+    .contact-section { background: var(--dark); color: var(--white); }
+    .contact-section .section-title { color: var(--white); }
+    .contact-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .contact-card {
+      background: var(--dark-2);
+      border: 1px solid var(--dark-3);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+    }
+    .contact-card h4 { font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem; }
+    .contact-card .affil { font-size: 0.8rem; color: #6B7280; margin-bottom: 0.75rem; }
+    .contact-card a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.82rem;
+      color: var(--orange-light);
+      text-decoration: none;
+    }
+    .contact-card a:hover { text-decoration: underline; }
+
+    /* ── FOOTER ────────────────────────────────────────── */
+    footer {
+      background: #080808;
+      padding: 2rem;
+      text-align: center;
+      font-size: 0.78rem;
+      color: #4B5563;
+      border-top: 1px solid #1A1A1A;
+    }
+    footer a { color: #6B7280; text-decoration: none; }
+    footer a:hover { color: #9CA3AF; }
+
+    /* ── LOGO ROW in hero ──────────────────────────────── */
+    .org-logos {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      margin-top: 2.5rem;
+      flex-wrap: wrap;
+    }
+    .org-logo-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      opacity: 0.7;
+    }
+    .org-logo-item img {
+      height: 26px;
+      width: auto;
+      filter: brightness(0) invert(1);
+    }
+    .org-logo-text {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #9CA3AF;
+      letter-spacing: 0.03em;
+    }
+
+    /* ── UTILS ─────────────────────────────────────────── */
+    .mt-sm { margin-top: 0.75rem; }
+    .mt-md { margin-top: 1.5rem; }
+    .flex-gap { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+
+    @media (max-width: 640px) {
+      .hero { padding: 3.5rem 1.25rem 3rem; }
+      section { padding: 3rem 1.25rem; }
+      nav { padding: 0 1.25rem; }
+      .demo-card { padding: 1.75rem; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <div class="nav-inner">
+      <div class="nav-logos">
+        <img src="https://cdn.prod.website-files.com/64b82ee93428b050ac9c222b/68da96d7e25e74b009716fb0_any-guardrail.svg"
+             alt="any-guardrail"
+             onerror="this.style.display='none'" />
+        <div class="logo-divider"></div>
+        <span style="color:#6B7280;font-size:0.75rem;font-weight:600;letter-spacing:0.05em;">ACM FAccT 2026</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#abstract">Abstract</a></li>
+        <li><a href="#demo">Demo</a></li>
+        <li><a href="#activity">Activity</a></li>
+        <li><a href="#resources">Resources</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="conference-badge">
+        ⬥ ACM FAccT 2026 &nbsp;·&nbsp; Dialogue / Translation Tutorial
+      </div>
+      <p class="hero-type">Tutorial</p>
+      <h1>Contextual Evaluation of LLM <span>Guardrails</span> Across Languages and Agentic Systems</h1>
+
+      <div class="authors">
+        <div class="author-chip">
+          Roya Pakzad <span class="org">· Taraaz &amp; Mozilla AI</span>
+        </div>
+        <div class="author-chip">
+          Daniel Nissani <span class="org">· Mozilla AI</span>
+        </div>
+      </div>
+
+      <div class="org-logos">
+        <div class="org-logo-item">
+          <img src="https://cdn.prod.website-files.com/64b82ee93428b050ac9c222b/68da96d7e25e74b009716fb0_any-guardrail.svg"
+               alt="any-guardrail logo"
+               onerror="this.style.display='none'" />
+          <span class="org-logo-text">Mozilla AI</span>
+        </div>
+        <div class="org-logo-item">
+          <img src="https://images.squarespace-cdn.com/content/v1/5d159d288addab0001036c45/1601351389973-GC3MIIGYLD9PH36M4X7B/taraaz+logo+update+9_28.png?format=750w"
+               alt="Taraaz logo"
+               style="filter: brightness(0) invert(1); height:22px;"
+               onerror="this.style.display='none'" />
+          <span class="org-logo-text">Taraaz</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ABSTRACT -->
+  <section class="abstract-section" id="abstract">
+    <div class="section-inner">
+      <p class="section-label">About this tutorial</p>
+      <h2 class="section-title">Abstract</h2>
+      <p class="abstract-text">
+        Guardrails — mechanisms that filter, flag, or constrain Large Language Model (LLM) inputs
+        and outputs — have become a core component of the AI safety stack, shaping how AI systems
+        behave in chatbots, social media platforms, and public-facing services. Yet while the
+        research community devotes significant attention to evaluating the outputs and capabilities
+        of LLMs themselves, the guardrail models that govern what users actually see and experience
+        have received less scrutiny. We argue that <strong>evaluating guardrails is as important as
+        evaluating the LLMs they protect</strong>.
+      </p>
+      <p class="abstract-text mt-md">
+        Historically, guardrails have been difficult to examine: often they performed as proprietary
+        classifiers embedded in content moderation systems, visible to users only through refusals
+        or minimally explained filtering decisions. The recent proliferation of open-source guardrail
+        models — with accessible architectures, chain-of-thought reasoning traces, and open safety
+        taxonomies — has created an opportunity for independent evaluation.
+      </p>
+      <p class="abstract-text mt-md">
+        This tutorial invites FAccT researchers to critically examine guardrails across languages,
+        domains, and deployment contexts. Drawing on our multilingual, context-aware evaluation of
+        guardrails in a humanitarian setting and on the design of Mozilla AI's open-source
+        <em>any-guardrail</em> framework, we show how guardrails can be systematically and
+        contextually evaluated. Through an interactive tutorial activity, we demonstrate that others
+        can do this too — in their own context and language of interest.
+      </p>
+      <p class="abstract-text mt-md">
+        We also identify key research frontiers in LLM guardrails design, including dynamic safety
+        taxonomies, agentic capabilities such as tool use and retrieval for fact-checking and
+        trustworthiness, multimodal coverage, and the creation of feedback loops between evaluation
+        results and guardrail improvement.
+      </p>
+    </div>
+  </section>
+
+  <!-- DEMO + SLIDES -->
+  <section class="demo-section" id="demo">
+    <div class="section-inner">
+      <p class="section-label" style="color:#FF8C69;">Interactive demo</p>
+      <h2 class="section-title" style="color:#fff;">Try the Guardrails Demo</h2>
+      <div class="demo-card">
+        <div class="demo-card-text">
+          <h3>🛡️ Guardrails Demo App</h3>
+          <p>
+            An interactive web app built for this tutorial. Select a real-world scenario, choose a
+            policy, translate the prompt to your language, generate a model response, and run
+            both non-agentic and agentic guardrail evaluations — side by side.
+          </p>
+          <div class="flex-gap mt-sm">
+            <a href="https://guardrail-webapp.vercel.app/" target="_blank" rel="noopener" class="btn btn-orange">
+              ↗ Open Demo
+            </a>
+            <a href="https://github.com/royapakzad/guardrail_agentic" target="_blank" rel="noopener" class="btn btn-outline">
+              ⌥ View on GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDES -->
+      <div style="margin-top:2rem;">
+        <p class="section-label" style="color:#FF8C69;">Presentation slides</p>
+        <h3 style="color:#fff;font-size:1.1rem;font-weight:600;margin-bottom:1rem;">Tutorial Slides</h3>
+        <div class="slides-placeholder" style="background:var(--dark-2);border-color:#2A2A2A;">
+          <div style="font-size:1.75rem;margin-bottom:0.5rem;">📑</div>
+          <p style="color:#9CA3AF;font-weight:500;">Slides will be available here after the presentation</p>
+          <p style="color:#4B5563;font-size:0.8rem;margin-top:0.4rem;">Presented by Roya Pakzad &amp; Daniel Nissani at ACM FAccT 2026</p>
+          <span class="placeholder-link" style="background:#1A1A1A;color:#4B5563;">
+            🔗 &nbsp;Google Slides link coming soon
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACTIVITY -->
+  <section class="activity-section" id="activity">
+    <div class="section-inner">
+      <p class="section-label">Tutorial activity</p>
+      <h2 class="section-title">What to Do After the Presentation</h2>
+      <p style="color:#4B5563;font-size:0.9rem;max-width:680px;">
+        Following Roya and Daniel's presentation, you'll work through the demo app hands-on.
+        Here's what to expect:
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h4>Pick a scenario</h4>
+            <p>Choose one of the pre-loaded real-world scenarios (financial services, healthcare, humanitarian, legal, cybersecurity) — or write your own custom prompt.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h4>Select a guardrail policy</h4>
+            <p>Choose the domain-specific policy that should govern the LLM response. Read through the criteria to understand what it requires of a compliant answer.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h4>Translate to your language</h4>
+            <p>Translate the scenario into a language of your choice. This surfaces how multilingual context shifts what a guardrail flags — or misses.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h4>Generate a model response</h4>
+            <p>Choose GPT-4o or Claude Sonnet 4.6 to generate a response to your scenario. You'll use this response as the input to the guardrail judge.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h4>Run the guardrail evaluation</h4>
+            <p>
+              Compare <strong>non-agentic</strong> (policy text only) versus <strong>agentic</strong>
+              (web search + URL validation + fact-checking) guardrail evaluation. Notice where the
+              agentic judge catches violations the non-agentic one misses — and why.
+              <br /><br />
+              Open the demo: <a href="https://guardrail-webapp.vercel.app/" target="_blank" rel="noopener">guardrail-webapp.vercel.app ↗</a>
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h4>Save and compare</h4>
+            <p>Save multiple evaluations and compare results across languages, scenarios, and guardrail modes. Bring your findings back to the group discussion.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESOURCES -->
+  <section class="resources-section" id="resources">
+    <div class="section-inner">
+      <p class="section-label">Further reading</p>
+      <h2 class="section-title">Resources</h2>
+      <p style="color:#4B5563;font-size:0.9rem;max-width:640px;">
+        To learn more about this work, the tools, and the research behind this tutorial:
+      </p>
+
+      <div class="resource-grid">
+        <a class="resource-card" href="https://blog.mozilla.ai/evaluating-multilingual-context-aware-guardrails-evidence-from-a-humanitarian-llm-use-case/" target="_blank" rel="noopener">
+          <span class="rc-tag">Research</span>
+          <h4>Evaluating Multilingual, Context-Aware Guardrails</h4>
+          <p>Evidence from a humanitarian LLM use case — the research that inspired this tutorial.</p>
+          <span class="rc-url">blog.mozilla.ai</span>
+        </a>
+
+        <a class="resource-card" href="https://www.mozilla.ai/open-tools/choice-first-stack/any-guardrail" target="_blank" rel="noopener">
+          <span class="rc-tag">Open Source Tool</span>
+          <h4>any-guardrail</h4>
+          <p>Mozilla AI's open-source framework for flexible, context-aware guardrail evaluation across models and policies.</p>
+          <span class="rc-url">mozilla.ai / any-guardrail</span>
+        </a>
+
+        <a class="resource-card" href="https://github.com/royapakzad/guardrail_agentic" target="_blank" rel="noopener">
+          <span class="rc-tag">GitHub</span>
+          <h4>Agentic Guardrail — Source Code</h4>
+          <p>The open-source code for the agentic guardrail evaluation system demonstrated in this tutorial.</p>
+          <span class="rc-url">github.com/royapakzad/guardrail_agentic</span>
+        </a>
+
+        <a class="resource-card" href="https://www.multilingualailab.com/" target="_blank" rel="noopener">
+          <span class="rc-tag">Research Lab</span>
+          <h4>Multilingual AI Lab</h4>
+          <p>Research on multilingual AI systems, safety, and equitable language technology.</p>
+          <span class="rc-url">multilingualailab.com</span>
+        </a>
+
+        <a class="resource-card" href="https://guardrail-webapp.vercel.app/" target="_blank" rel="noopener">
+          <span class="rc-tag">Demo</span>
+          <h4>Interactive Demo App</h4>
+          <p>Try the guardrail evaluation pipeline yourself — agentic vs. non-agentic, across languages and domains.</p>
+          <span class="rc-url">guardrail-webapp.vercel.app</span>
+        </a>
+
+        <a class="resource-card" href="https://www.mozilla.ai/" target="_blank" rel="noopener">
+          <span class="rc-tag">Organization</span>
+          <h4>Mozilla AI</h4>
+          <p>Mozilla AI builds open, trustworthy AI tools and conducts research in responsible AI development.</p>
+          <span class="rc-url">mozilla.ai</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section class="contact-section" id="contact">
+    <div class="section-inner">
+      <p class="section-label" style="color:#FF8C69;">Get in touch</p>
+      <h2 class="section-title">Contact</h2>
+      <div class="contact-grid">
+        <div class="contact-card">
+          <h4>Roya Pakzad</h4>
+          <p class="affil">Taraaz Research &amp; Mozilla AI</p>
+          <a href="mailto:rpakzad@taraazresearch.org">
+            ✉ rpakzad@taraazresearch.org
+          </a>
+        </div>
+        <div class="contact-card">
+          <h4>Daniel Nissani</h4>
+          <p class="affil">Mozilla AI</p>
+          <a href="mailto:daniel@mozilla.ai">
+            ✉ daniel@mozilla.ai
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>
+      ACM FAccT 2026 · Dialogue/Translation Tutorial ·
+      <a href="https://guardrail-webapp.vercel.app/" target="_blank" rel="noopener">guardrail-webapp.vercel.app</a>
+    </p>
+    <p style="margin-top:0.4rem;">
+      <a href="https://www.mozilla.ai/" target="_blank" rel="noopener">Mozilla AI</a>
+      &nbsp;·&nbsp;
+      <a href="https://taraazresearch.org/" target="_blank" rel="noopener">Taraaz</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/royapakzad/guardrail_agentic" target="_blank" rel="noopener">GitHub</a>
+    </p>
+  </footer>
+
+</body>
+</html>
