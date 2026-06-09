@@ -51,16 +51,29 @@ function VerdictBadge({ verdict, score }: { verdict: string; score: number }) {
 }
 
 // ── Criterion row ────────────────────────────────────────────────────────────
+function verdictStyle(verdict: string): { color: string; label: string } {
+  const v = verdict.toLowerCase();
+  if (v.includes("compliant") && !v.includes("non") && !v.includes("violation")) {
+    return { color: "text-green-700 bg-green-50", label: "Compliant" };
+  }
+  if (v.includes("minor")) {
+    return { color: "text-amber-700 bg-amber-50", label: verdict };
+  }
+  if (v.includes("major") || v.includes("significant")) {
+    return { color: "text-orange-700 bg-orange-50", label: verdict };
+  }
+  if (v === "minor_issue") return { color: "text-amber-700 bg-amber-50", label: "Minor Issue" };
+  if (v === "major_issue") return { color: "text-orange-700 bg-orange-50", label: "Major Issue" };
+  // pass/no-issue variants
+  if (v.includes("pass") || v.includes("ok") || v.includes("no issue")) {
+    return { color: "text-green-700 bg-green-50", label: verdict };
+  }
+  return { color: "text-red-700 bg-red-50", label: verdict };
+}
+
 function CriterionRow({ cv }: { cv: { criterion: string; verdict: string; issues: string[]; improvements: string[]; tool_influenced?: boolean } }) {
   const [open, setOpen] = useState(false);
-  const color =
-    cv.verdict === "COMPLIANT"
-      ? "text-green-700 bg-green-50"
-      : cv.verdict === "MINOR_ISSUE"
-      ? "text-amber-700 bg-amber-50"
-      : cv.verdict === "MAJOR_ISSUE"
-      ? "text-orange-700 bg-orange-50"
-      : "text-red-700 bg-red-50";
+  const { color, label } = verdictStyle(cv.verdict);
 
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -75,7 +88,7 @@ function CriterionRow({ cv }: { cv: { criterion: string; verdict: string; issues
           <span className="text-sm font-medium text-slate-800">{cv.criterion}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded ${color}`}>{cv.verdict}</span>
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded ${color}`}>{label}</span>
           <span className="text-slate-400 text-xs">{open ? "▲" : "▼"}</span>
         </div>
       </button>
