@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
+import { getOpenAIClient } from "@/lib/llm-client";
+import { search } from "@/lib/search";
+import { checkUrl } from "@/lib/url-check";
 
 export const maxDuration = 120;
-import { getOpenAIClient } from "@/lib/llm-client";
 import {
   buildAgenticSystemPrompt,
   buildAgenticUserMessage,
@@ -69,13 +71,7 @@ function emit(controller: ReadableStreamDefaultController, event: AgenticEvent) 
   controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 }
 
-function getBaseUrl() {
-  if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
-}
-
-// Shared tool execution — provider-agnostic
+// Shared tool execution — calls lib functions directly (no internal HTTP)
 async function executeToolCall(
   toolName: string,
   args: Record<string, string>,
@@ -83,26 +79,20 @@ async function executeToolCall(
   turn: number,
   sourcesUsed: string[]
 ): Promise<string> {
-  const baseUrl = getBaseUrl();
   let resultStr = "";
 
   if (toolName === "search_web") {
-    const r = await fetch(`${baseUrl}/api/tools/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: args.query }),
-    });
-    const { results } = await r.json();
+    const results = await search(args.query);
     sourcesUsed.push(`search: ${args.query}`);
-    resultStr = JSON.stringify(results ?? []);
-    const preview = (results ?? [])
+    resultStr = JSON.stringify(results);
+    const preview = results
       .slice(0, 3)
-      .map((r: { title: string; url: string; snippet: string }) => `"${r.title}" (${r.url}) — ${r.snippet.slice(0, 80)}`)
+      .map((r) => `"${r.title}" (${r.url}) — ${r.snippet.slice(0, 80)}`)
       .join("; ");
     emit(controller, {
       type: "tool_result",
       tool: toolName,
-      result: `${(results ?? []).length} result(s). ${preview}`,
+      result: `${results.length} result(s). ${preview}`,
       turn,
     });
   } else if (toolName === "fetch_url") {
@@ -117,34 +107,22 @@ async function executeToolCall(
       turn,
     });
   } else if (toolName === "check_url_validity") {
-    const r = await fetch(`${baseUrl}/api/tools/url-check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: args.url }),
-    });
-    const check = await r.json();
-    resultStr = JSON.stringify(check);
-    sourcesUsed.push(`url_check: ${args.url} → HTTP ${check.status_code}`);
+    const result = await checkUrl(args.url);
+    resultStr = JSON.stringify(result);
+    sourcesUsed.push(`url_check: ${args.url} → HTTP ${result.status_code}`);
     emit(controller, {
       type: "tool_result",
       tool: toolName,
-      result: `HTTP ${check.status_code} (${check.valid ? "✓ VALID" : "✗ BROKEN"})`,
+      result: `HTTP ${result.status_code} (${result.valid ? "✓ VALID" : "✗ BROKEN"})`,
       turn,
     });
   } else if (toolName === "check_acronym") {
-    const r = await fetch(`${baseUrl}/api/tools/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `${args.acronym} stands for "${args.claimed_expansion}" official name`,
-      }),
-    });
-    const { results } = await r.json();
-    const combinedText = (results ?? []).map((r: { title: string; snippet: string }) => `${r.title} ${r.snippet}`).join(" ").toLowerCase();
-    const words = (args.claimed_expansion || "").toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-    const matched = words.filter((w: string) => combinedText.includes(w)).length;
+    const results = await search(`${args.acronym} stands for "${args.claimed_expansion}" official name`);
+    const combinedText = results.map((r) => `${r.title} ${r.snippet}`).join(" ").toLowerCase();
+    const words = (args.claimed_expansion || "").toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const matched = words.filter((w) => combinedText.includes(w)).length;
     const matchScore = words.length > 0 ? matched / words.length : 0;
-    const verdict = (results ?? []).length === 0 ? "no_results"
+    const verdict = results.length === 0 ? "no_results"
       : matchScore >= 0.6 ? "likely_correct"
       : matchScore < 0.25 ? "likely_wrong" : "unclear";
     resultStr = JSON.stringify({ verdict_hint: verdict, match_score: matchScore, search_results: results });
@@ -225,26 +203,14 @@ export async function POST(req: NextRequest) {
 
         for (const { acronym, expansion } of acronyms.slice(0, 5)) {
           try {
-            const searchRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/tools/search`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ query: `${acronym} official name expansion ${expansion}` }),
-            });
-
-            let verdictHint = "unclear";
-            let matchScore = 0;
-
-            if (searchRes.ok) {
-              const { results } = await searchRes.json();
-              const combinedText = results.map((r: { title: string; snippet: string }) => `${r.title} ${r.snippet}`).join(" ").toLowerCase();
-              const words = expansion.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const matched = words.filter((w: string) => combinedText.includes(w)).length;
-              matchScore = words.length > 0 ? matched / words.length : 0;
-
-              if (results.length === 0) verdictHint = "no_results";
-              else if (matchScore >= 0.6) verdictHint = "likely_correct";
-              else if (matchScore < 0.25) verdictHint = "likely_wrong";
-            }
+            const results = await search(`${acronym} official name expansion ${expansion}`);
+            const combinedText = results.map((r) => `${r.title} ${r.snippet}`).join(" ").toLowerCase();
+            const words = expansion.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+            const matched = words.filter((w) => combinedText.includes(w)).length;
+            const matchScore = words.length > 0 ? matched / words.length : 0;
+            const verdictHint = results.length === 0 ? "no_results"
+              : matchScore >= 0.6 ? "likely_correct"
+              : matchScore < 0.25 ? "likely_wrong" : "unclear";
 
             emit(controller, { type: "prerun_acronym", acronym, expansion, verdict: verdictHint, match: matchScore });
             acronymContext += `• ${acronym} → claimed="${expansion}": ${verdictHint} (match ${Math.round(matchScore * 100)}%)\n`;
