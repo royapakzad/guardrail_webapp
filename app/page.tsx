@@ -246,36 +246,32 @@ function GuardrailPanel({
 function HumanEvalForm({
   scenario,
   policyName,
-  nonagenticVerdict,
-  nonagenticScore,
-  agenticVerdict,
-  agenticScore,
+  model,
+  nonAgenticResult,
+  agenticResult,
+  agenticEvents,
   guardrailMode,
   judgeModel,
+  onSaved,
 }: {
   scenario: string;
   policyName: string;
-  nonagenticVerdict: string | null;
-  nonagenticScore: number | null;
-  agenticVerdict: string | null;
-  agenticScore: number | null;
+  model: string;
+  nonAgenticResult: GuardrailResult | null;
+  agenticResult: GuardrailResult | null;
+  agenticEvents: AgenticEvent[];
   guardrailMode: string;
   judgeModel: string;
+  onSaved: (ev: SavedEvaluation) => void;
 }) {
   const [name, setName] = useState("");
-  const [agreesWithAi, setAgreesWithAi] = useState("");
-  const [noticedIssues, setNoticedIssues] = useState("");
-  const [responseQuality, setResponseQuality] = useState<number | null>(null);
-  const [policyAdjustment, setPolicyAdjustment] = useState("");
-  const [additionalComments, setAdditionalComments] = useState("");
+  const [agenticDiff, setAgenticDiff] = useState("");
+  const [generalObservations, setGeneralObservations] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const primaryVerdict = nonagenticVerdict ?? agenticVerdict ?? "N/A";
-
   const handleSubmit = async () => {
-    if (!agreesWithAi || !responseQuality) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -286,21 +282,37 @@ function HumanEvalForm({
           evaluatorName: name,
           scenario,
           policyName,
-          nonagenticVerdict,
-          nonagenticScore,
-          agenticVerdict,
-          agenticScore,
+          model,
+          nonagenticVerdict: nonAgenticResult?.overall_verdict ?? null,
+          nonagenticScore: nonAgenticResult?.score ?? null,
+          nonAgenticResult,
+          agenticVerdict: agenticResult?.overall_verdict ?? null,
+          agenticScore: agenticResult?.score ?? null,
+          agenticResult,
           guardrailMode,
           judgeModel,
-          agreesWithAi,
-          noticedIssues,
-          responseQuality,
-          policyAdjustment,
-          additionalComments,
+          agenticDiff,
+          generalObservations,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Submission failed");
+      // Save to browser state
+      onSaved({
+        id: Date.now().toString(),
+        savedAt: new Date(),
+        scenario,
+        policy: policyName,
+        model,
+        guardrailMode,
+        judgeModel,
+        nonAgenticResult,
+        agenticResult,
+        agenticEvents,
+        evaluatorName: name,
+        agenticDiff,
+        generalObservations,
+      });
       setSubmitted(true);
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Submission failed");
@@ -314,7 +326,7 @@ function HumanEvalForm({
       <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
         <p className="text-3xl mb-2">✓</p>
         <p className="font-semibold text-green-800">Response saved!</p>
-        <p className="text-sm text-green-600 mt-1">Thank you for your evaluation.</p>
+        <p className="text-sm text-green-600 mt-1">Thank you for your observations.</p>
       </div>
     );
   }
@@ -322,10 +334,8 @@ function HumanEvalForm({
   return (
     <div className="bg-white border-2 border-indigo-100 rounded-xl p-6 space-y-5">
       <div>
-        <h3 className="font-semibold text-slate-800">Your Human Evaluation</h3>
-        <p className="text-sm text-slate-500 mt-0.5">
-          The AI guardrail verdict was <strong>{primaryVerdict}</strong>. Share your own judgment below.
-        </p>
+        <h3 className="font-semibold text-slate-800">Your Observations</h3>
+        <p className="text-sm text-slate-500 mt-0.5">Share what you noticed after seeing both evaluations.</p>
       </div>
 
       {/* Name */}
@@ -340,97 +350,29 @@ function HumanEvalForm({
         />
       </div>
 
-      {/* Agree with AI */}
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-2">
-          Do you agree with the AI&apos;s verdict ({primaryVerdict})?{" "}
-          <span className="text-red-500">*</span>
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {["Agree", "Partially agree", "Disagree"].map((opt) => (
-            <button
-              key={opt}
-              onClick={() => setAgreesWithAi(opt)}
-              className={`px-4 py-2 rounded-lg text-sm border transition-all ${
-                agreesWithAi === opt
-                  ? "bg-indigo-600 text-white border-indigo-600"
-                  : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Issues noticed */}
+      {/* Agentic vs non-agentic differences */}
       <div>
         <label className="text-sm font-medium text-slate-700 block mb-1">
-          What issues did YOU notice in the AI response?
+          What differences do you see in the agentic vs. non-agentic judgment?
         </label>
         <textarea
-          value={noticedIssues}
-          onChange={(e) => setNoticedIssues(e.target.value)}
-          placeholder="Describe any problems, risks, or policy violations you spotted..."
-          className="w-full h-24 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+          value={agenticDiff}
+          onChange={(e) => setAgenticDiff(e.target.value)}
+          placeholder="e.g. The agentic version checked URLs and changed its verdict, the non-agentic missed X..."
+          className="w-full h-28 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
         />
       </div>
 
-      {/* Response quality */}
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-2">
-          Rate the AI response quality (1 = poor, 5 = excellent){" "}
-          <span className="text-red-500">*</span>
-        </label>
-        <div className="flex gap-2">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              onClick={() => setResponseQuality(n)}
-              className={`w-10 h-10 rounded-lg text-sm font-semibold border transition-all ${
-                responseQuality === n
-                  ? "bg-indigo-600 text-white border-indigo-600"
-                  : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Policy adjustment */}
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-2">
-          Should this policy be adjusted?
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {["Stricter", "About right", "More lenient"].map((opt) => (
-            <button
-              key={opt}
-              onClick={() => setPolicyAdjustment(policyAdjustment === opt ? "" : opt)}
-              className={`px-4 py-2 rounded-lg text-sm border transition-all ${
-                policyAdjustment === opt
-                  ? "bg-indigo-600 text-white border-indigo-600"
-                  : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Additional comments */}
+      {/* General observations */}
       <div>
         <label className="text-sm font-medium text-slate-700 block mb-1">
-          Additional comments (optional)
+          General observations
         </label>
         <textarea
-          value={additionalComments}
-          onChange={(e) => setAdditionalComments(e.target.value)}
-          placeholder="Any other observations or suggestions..."
-          className="w-full h-20 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+          value={generalObservations}
+          onChange={(e) => setGeneralObservations(e.target.value)}
+          placeholder="Anything else you noticed — about the policy, the model response, or the guardrail behavior..."
+          className="w-full h-28 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
         />
       </div>
 
@@ -440,13 +382,13 @@ function HumanEvalForm({
 
       <button
         onClick={handleSubmit}
-        disabled={!agreesWithAi || !responseQuality || submitting}
+        disabled={submitting}
         className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 hover:bg-indigo-700 flex items-center gap-2 transition-colors"
       >
         {submitting ? (
           <><span className="animate-spin">↻</span> Saving...</>
         ) : (
-          "📝 Submit Human Evaluation"
+          "📝 Submit Observations"
         )}
       </button>
     </div>
@@ -465,6 +407,10 @@ interface SavedEvaluation {
   nonAgenticResult: GuardrailResult | null;
   agenticResult: GuardrailResult | null;
   agenticEvents: AgenticEvent[];
+  // Human eval
+  evaluatorName: string;
+  agenticDiff: string;
+  generalObservations: string;
 }
 
 // ── Saved evaluation card ────────────────────────────────────────────────────
@@ -504,11 +450,9 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
 
       {open && (
         <div className="border-t px-5 py-4 space-y-4 bg-slate-50">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 mb-1">Scenario</p>
-              <p className="text-slate-700 whitespace-pre-wrap">{ev.scenario}</p>
-            </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-500 mb-1">Scenario</p>
+            <p className="text-sm text-slate-700 whitespace-pre-wrap">{ev.scenario}</p>
           </div>
           <div className={`grid gap-6 ${verdicts.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
             {ev.nonAgenticResult && (
@@ -518,6 +462,25 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
               <GuardrailPanel label="⚡ Agentic" result={ev.agenticResult} events={ev.agenticEvents} />
             )}
           </div>
+          {(ev.agenticDiff || ev.generalObservations) && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-indigo-700">
+                {ev.evaluatorName ? `${ev.evaluatorName}'s observations` : "Your observations"}
+              </p>
+              {ev.agenticDiff && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-0.5">Agentic vs. non-agentic differences</p>
+                  <p className="text-sm text-slate-700">{ev.agenticDiff}</p>
+                </div>
+              )}
+              {ev.generalObservations && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-0.5">General observations</p>
+                  <p className="text-sm text-slate-700">{ev.generalObservations}</p>
+                </div>
+              )}
+            </div>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="text-xs text-red-500 hover:text-red-700"
@@ -569,7 +532,6 @@ export default function Home() {
   const [langVersion, setLangVersion] = useState<"original" | "translated">("original");
   const [savedEvaluations, setSavedEvaluations] = useState<SavedEvaluation[]>([]);
   const [showSaved, setShowSaved] = useState(false);
-  const [saveFlash, setSaveFlash] = useState(false);
 
   const update = (patch: Partial<WizardState>) => setState((s) => ({ ...s, ...patch }));
 
@@ -699,25 +661,6 @@ export default function Home() {
       setLoading(false);
     }
   }, [state, activeSysPrompt, activeUserMessage, judgeModel]);
-
-  // ── Save evaluation ───────────────────────────────────────────────────────
-  const handleSaveEvaluation = useCallback(() => {
-    const ev: SavedEvaluation = {
-      id: Date.now().toString(),
-      savedAt: new Date(),
-      scenario: activeUserMessage,
-      policy: state.policy?.name ?? "Unknown",
-      model: MODELS.find((m) => m.id === state.selectedModel)?.name ?? state.selectedModel,
-      guardrailMode: state.guardrailMode,
-      judgeModel,
-      nonAgenticResult: state.nonAgenticResult,
-      agenticResult: state.agenticResult,
-      agenticEvents: state.agenticEvents,
-    };
-    setSavedEvaluations((prev) => [ev, ...prev]);
-    setSaveFlash(true);
-    setTimeout(() => setSaveFlash(false), 2000);
-  }, [state, activeUserMessage, judgeModel]);
 
   const handleNewScenario = useCallback(() => {
     setState({
@@ -1248,30 +1191,18 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Save button */}
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleSaveEvaluation}
-                    className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-                  >
-                    💾 Save Evaluation
-                  </button>
-                  {saveFlash && (
-                    <span className="text-sm text-green-600 font-medium">✓ Saved!</span>
-                  )}
-                </div>
-
-                {/* Human evaluation form */}
+                {/* Human evaluation form — submitting saves to both DB and browser */}
                 <div className="border-t pt-6">
                   <HumanEvalForm
                     scenario={activeUserMessage}
                     policyName={state.policy?.name ?? "Unknown"}
-                    nonagenticVerdict={state.nonAgenticResult?.overall_verdict ?? null}
-                    nonagenticScore={state.nonAgenticResult?.score ?? null}
-                    agenticVerdict={state.agenticResult?.overall_verdict ?? null}
-                    agenticScore={state.agenticResult?.score ?? null}
+                    model={MODELS.find((m) => m.id === state.selectedModel)?.name ?? state.selectedModel}
+                    nonAgenticResult={state.nonAgenticResult}
+                    agenticResult={state.agenticResult}
+                    agenticEvents={state.agenticEvents}
                     guardrailMode={state.guardrailMode}
                     judgeModel={judgeModel}
+                    onSaved={(ev) => setSavedEvaluations((prev) => [ev, ...prev])}
                   />
                 </div>
               </>

@@ -3,23 +3,23 @@ import { NextRequest, NextResponse } from "next/server";
 
 async function ensureTable() {
   await sql`
-    CREATE TABLE IF NOT EXISTS human_evaluations (
+    CREATE TABLE IF NOT EXISTS workshop_responses (
       id SERIAL PRIMARY KEY,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       evaluator_name TEXT,
       scenario TEXT NOT NULL,
       policy_name TEXT NOT NULL,
+      model TEXT,
       nonagentic_verdict TEXT,
       nonagentic_score REAL,
+      nonagentic_result JSONB,
       agentic_verdict TEXT,
       agentic_score REAL,
+      agentic_result JSONB,
       guardrail_mode TEXT,
       judge_model TEXT,
-      agrees_with_ai TEXT NOT NULL,
-      noticed_issues TEXT,
-      response_quality INTEGER,
-      policy_adjustment TEXT,
-      additional_comments TEXT
+      agentic_diff TEXT,
+      general_observations TEXT
     )
   `;
 }
@@ -31,36 +31,36 @@ export async function POST(req: NextRequest) {
       evaluatorName,
       scenario,
       policyName,
+      model,
       nonagenticVerdict,
       nonagenticScore,
+      nonAgenticResult,
       agenticVerdict,
       agenticScore,
+      agenticResult,
       guardrailMode,
       judgeModel,
-      agreesWithAi,
-      noticedIssues,
-      responseQuality,
-      policyAdjustment,
-      additionalComments,
+      agenticDiff,
+      generalObservations,
     } = body;
 
     await ensureTable();
 
     await sql`
-      INSERT INTO human_evaluations (
-        evaluator_name, scenario, policy_name,
-        nonagentic_verdict, nonagentic_score,
-        agentic_verdict, agentic_score,
+      INSERT INTO workshop_responses (
+        evaluator_name, scenario, policy_name, model,
+        nonagentic_verdict, nonagentic_score, nonagentic_result,
+        agentic_verdict, agentic_score, agentic_result,
         guardrail_mode, judge_model,
-        agrees_with_ai, noticed_issues,
-        response_quality, policy_adjustment, additional_comments
+        agentic_diff, general_observations
       ) VALUES (
-        ${evaluatorName || null}, ${scenario}, ${policyName},
+        ${evaluatorName || null}, ${scenario}, ${policyName}, ${model || null},
         ${nonagenticVerdict || null}, ${nonagenticScore ?? null},
+        ${nonAgenticResult ? JSON.stringify(nonAgenticResult) : null},
         ${agenticVerdict || null}, ${agenticScore ?? null},
+        ${agenticResult ? JSON.stringify(agenticResult) : null},
         ${guardrailMode || null}, ${judgeModel || null},
-        ${agreesWithAi}, ${noticedIssues || null},
-        ${responseQuality ?? null}, ${policyAdjustment || null}, ${additionalComments || null}
+        ${agenticDiff || null}, ${generalObservations || null}
       )
     `;
 
@@ -68,11 +68,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("human-eval POST error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
-    const isDbError = msg.includes("connect") || msg.includes("POSTGRES") || msg.includes("relation");
+    const isDbError =
+      msg.includes("connect") || msg.includes("POSTGRES") || msg.includes("relation");
     return NextResponse.json(
       {
         error: isDbError
-          ? "Database not configured yet. Set up Vercel Postgres in your project's Storage tab, then redeploy."
+          ? "Database not configured yet. Set up Vercel Postgres in your project's Storage tab."
           : msg,
       },
       { status: 500 }
@@ -84,7 +85,7 @@ export async function GET() {
   try {
     await ensureTable();
     const { rows } = await sql`
-      SELECT * FROM human_evaluations ORDER BY created_at DESC
+      SELECT * FROM workshop_responses ORDER BY created_at DESC
     `;
     return NextResponse.json({ evaluations: rows });
   } catch (error) {
