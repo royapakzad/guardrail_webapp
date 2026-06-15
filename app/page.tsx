@@ -765,7 +765,7 @@ export default function Home() {
                     }`}
                   >
                     <p className="font-medium text-slate-800 mb-2">{s.title}</p>
-                    <p className="text-sm text-slate-500 line-clamp-3">{s.userMessage}</p>
+                    <p className="text-sm text-slate-500">{s.userMessage}</p>
                   </button>
                 ))}
               </div>
@@ -773,14 +773,36 @@ export default function Home() {
 
             {/* Custom scenario */}
             <div className="bg-white rounded-xl border p-4 space-y-3">
-              <p className="text-sm font-medium text-slate-700">Or write a custom scenario</p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-slate-700">Or write / upload a custom scenario</p>
+                <label className="flex items-center gap-1.5 text-xs text-indigo-600 border border-indigo-200 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-indigo-50 transition-colors">
+                  📂 Upload .txt / .md
+                  <input
+                    type="file"
+                    accept=".txt,.md"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const text = (ev.target?.result as string) || "";
+                        setCustomUserMsg(text);
+                        update({ scenario: null });
+                      };
+                      reader.readAsText(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
               <textarea
                 value={customUserMsg}
                 onChange={(e) => {
                   setCustomUserMsg(e.target.value);
                   if (e.target.value) update({ scenario: null });
                 }}
-                placeholder="Enter a user message to evaluate..."
+                placeholder="Enter a user message to evaluate, or upload a .txt / .md file above..."
                 className="w-full h-28 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
               />
               <textarea
@@ -824,6 +846,41 @@ export default function Home() {
                   <p className="text-sm text-slate-500">{p.description}</p>
                 </button>
               ))}
+
+              {/* Upload custom policy card */}
+              <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+                state.policy?.id === "custom-upload"
+                  ? "border-indigo-500 bg-indigo-50"
+                  : "border-slate-300 bg-white hover:border-indigo-300 hover:bg-slate-50"
+              }`}>
+                <span className="text-2xl">📄</span>
+                <p className="font-medium text-slate-700 text-sm">Upload your own policy</p>
+                <p className="text-xs text-slate-400 text-center">Accepts .txt or .md files</p>
+                <input
+                  type="file"
+                  accept=".txt,.md"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const text = (ev.target?.result as string) || "";
+                      const customPolicy = {
+                        id: "custom-upload",
+                        name: file.name.replace(/\.[^.]+$/, ""),
+                        description: "Uploaded custom policy",
+                        text,
+                      };
+                      update({ policy: customPolicy });
+                      setPolicyDraft(text);
+                      setPolicyEditing(false);
+                    };
+                    reader.readAsText(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
             </div>
 
             {/* Policy preview / editor */}
@@ -1092,7 +1149,7 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white rounded-xl border p-4">
                 <p className="text-xs font-semibold text-slate-500 mb-2">Scenario</p>
-                <p className="text-sm text-slate-700 line-clamp-4">{activeUserMessage}</p>
+                <p className="text-sm text-slate-700">{activeUserMessage}</p>
               </div>
               <div className="bg-white rounded-xl border p-4">
                 <p className="text-xs font-semibold text-slate-500 mb-2">
