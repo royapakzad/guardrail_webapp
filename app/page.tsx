@@ -881,6 +881,30 @@ export default function Home() {
                   }}
                 />
               </label>
+
+              {/* Write custom policy card */}
+              <button
+                onClick={() => {
+                  const customPolicy = {
+                    id: "custom-written",
+                    name: "Custom Policy",
+                    description: "Hand-written custom policy",
+                    text: "",
+                  };
+                  update({ policy: customPolicy });
+                  setPolicyDraft("");
+                  setPolicyEditing(true);
+                }}
+                className={`flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed transition-all ${
+                  state.policy?.id === "custom-written"
+                    ? "border-indigo-500 bg-indigo-50"
+                    : "border-slate-300 bg-white hover:border-indigo-300 hover:bg-slate-50"
+                }`}
+              >
+                <span className="text-2xl">✏️</span>
+                <p className="font-medium text-slate-700 text-sm">Write your own policy</p>
+                <p className="text-xs text-slate-400 text-center">Type a custom policy from scratch</p>
+              </button>
             </div>
 
             {/* Policy preview / editor */}
@@ -916,6 +940,7 @@ export default function Home() {
                   <textarea
                     value={policyDraft}
                     onChange={(e) => setPolicyDraft(e.target.value)}
+                    placeholder="Write your policy here — describe what the assistant must not do, and any other rules the guardrail should enforce..."
                     className="w-full text-xs text-slate-700 font-mono border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-y min-h-48 max-h-96 scrollbar-thin"
                     spellCheck={false}
                   />
@@ -933,7 +958,7 @@ export default function Home() {
             <div className="flex gap-3">
               <button onClick={() => update({ step: 1 })} className="px-4 py-2.5 border rounded-lg text-sm text-slate-600 hover:bg-slate-50">← Back</button>
               <button
-                disabled={!state.policy}
+                disabled={!state.policy || !(policyDraft || state.policy.text).trim()}
                 onClick={() => update({ step: 3 })}
                 className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 hover:bg-indigo-700"
               >
