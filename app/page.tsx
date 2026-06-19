@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import type { Domain, Policy, Scenario, GuardrailResult, AgenticEvent, WizardState } from "@/lib/types";
 import { SCENARIOS, DOMAIN_LABELS, DOMAIN_ICONS, DOMAIN_COLORS } from "@/lib/scenarios";
 import { POLICIES } from "@/lib/policies";
-import { MODELS } from "@/lib/models";
+import { MODELS, GUARDRAIL_JUDGES } from "@/lib/models";
 
 // ── Step indicator ──────────────────────────────────────────────────────────
 const STEPS = [
@@ -522,9 +522,16 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
 // ── Main wizard page ────────────────────────────────────────────────────────
 
 const LANGS = [
-  "Arabic", "Chinese (Simplified)", "Dutch", "Farsi (Persian)", "French",
-  "German", "Hindi", "Italian", "Japanese", "Korean", "Portuguese",
-  "Russian", "Spanish", "Swedish", "Turkish", "Ukrainian",
+  "Amharic", "Arabic", "Bengali", "Burmese", "Chinese (Simplified)",
+  "Chinese (Traditional)", "Czech", "Dari", "Dutch", "Farsi (Persian)",
+  "Filipino (Tagalog)", "French", "German", "Greek", "Gujarati",
+  "Hausa", "Hebrew", "Hindi", "Hungarian", "Indonesian", "Italian",
+  "Japanese", "Kazakh", "Khmer", "Kinyarwanda", "Korean", "Kurdish (Kurmanji)",
+  "Kurdish (Sorani)", "Lingala", "Malay", "Nepali", "Oromo", "Pashto",
+  "Polish", "Portuguese", "Punjabi", "Romanian", "Russian", "Serbian",
+  "Sinhala", "Somali", "Spanish", "Swahili", "Swedish", "Tamil",
+  "Telugu", "Thai", "Tigrinya", "Turkish", "Ukrainian", "Urdu",
+  "Uzbek", "Vietnamese", "Zulu",
 ];
 
 export default function Home() {
@@ -550,7 +557,7 @@ export default function Home() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [judgeModel, setJudgeModel] = useState("gpt-4o-mini");
+  const [judgeModel, setJudgeModel] = useState("gpt-5-nano");
   const [skipTranslation, setSkipTranslation] = useState(false);
   const [policyEditing, setPolicyEditing] = useState(false);
   const [policyDraft, setPolicyDraft] = useState("");
@@ -1173,8 +1180,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* Model selector — 2 models only */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+            {/* Model selector */}
+            <div className="grid grid-cols-1 gap-3 max-w-xs">
               {MODELS.map((m) => (
                 <button
                   key={m.id}
@@ -1345,9 +1352,9 @@ export default function Home() {
                     onChange={(e) => setJudgeModel(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   >
-                    <option value="gpt-4o-mini">GPT-4o mini (fast)</option>
-                    <option value="gpt-4o">GPT-4o (thorough)</option>
-                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                    {GUARDRAIL_JUDGES.map((j) => (
+                      <option key={j.id} value={j.id}>{j.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>

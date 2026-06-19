@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOpenAIClient } from "@/lib/llm-client";
+import { getOpenAIClient, completionTokenParams } from "@/lib/llm-client";
 import Anthropic from "@anthropic-ai/sdk";
 
 export const maxDuration = 60;
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       systemPrompt,
       userMessage,
       assistantResponse,
-      judgeModel = "gpt-4o-mini",
+      judgeModel = "gpt-5-nano",
     } = await req.json();
 
     if (!policy || !userMessage || !assistantResponse) {
@@ -89,8 +89,7 @@ export async function POST(req: NextRequest) {
       const completion = await client.chat.completions.create({
         model: judgeModel,
         messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userMsg }],
-        max_tokens: 2000,
-        temperature: 0,
+        ...completionTokenParams(judgeModel, 2000),
       });
       responseText = completion.choices[0]?.message?.content ?? "";
       usage = { prompt_tokens: completion.usage?.prompt_tokens ?? 0, completion_tokens: completion.usage?.completion_tokens ?? 0, total_tokens: completion.usage?.total_tokens ?? 0 };
@@ -124,8 +123,7 @@ export async function POST(req: NextRequest) {
             { role: "assistant", content: responseText },
             { role: "user", content: retryPrompt },
           ],
-          max_tokens: 2000,
-          temperature: 0,
+          ...completionTokenParams(judgeModel, 2000),
         });
         result = parseJudgment(retry.choices[0]?.message?.content ?? "");
       }

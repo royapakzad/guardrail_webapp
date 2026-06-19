@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-import { getOpenAIClient } from "@/lib/llm-client";
+import { getOpenAIClient, completionTokenParams } from "@/lib/llm-client";
 import { search } from "@/lib/search";
 import { checkUrl } from "@/lib/url-check";
 
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
     systemPrompt,
     userMessage,
     assistantResponse,
-    judgeModel = "gpt-4o-mini",
+    judgeModel = "gpt-5-nano",
   } = await req.json();
 
   const useAnthropic = judgeModel.startsWith("claude") &&
@@ -339,8 +339,7 @@ export async function POST(req: NextRequest) {
             const callOpts: OpenAI.ChatCompletionCreateParams = {
               model: judgeModel,
               messages,
-              max_tokens: 2000,
-              temperature: 0,
+              ...completionTokenParams(judgeModel, 2000),
               tools: toolCallsMade < MAX_TOOL_CALLS ? (TOOL_SCHEMAS as OpenAI.ChatCompletionTool[]) : undefined,
               tool_choice: toolCallsMade < MAX_TOOL_CALLS ? "auto" : "none",
             };
@@ -378,8 +377,7 @@ export async function POST(req: NextRequest) {
               const finalCompletion = await client.chat.completions.create({
                 model: judgeModel,
                 messages,
-                max_tokens: 2000,
-                temperature: 0,
+                ...completionTokenParams(judgeModel, 2000),
               });
               finalText = finalCompletion.choices[0].message.content ?? "";
               break;
@@ -394,8 +392,7 @@ export async function POST(req: NextRequest) {
             const retryCompletion = await client.chat.completions.create({
               model: judgeModel,
               messages,
-              max_tokens: 2000,
-              temperature: 0,
+              ...completionTokenParams(judgeModel, 2000),
             });
             result = parseJudgment(retryCompletion.choices[0].message.content ?? "");
           }

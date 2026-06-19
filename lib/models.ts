@@ -7,12 +7,6 @@ export const MODELS: ModelOption[] = [
     provider: "OpenAI",
     description: "OpenAI's flagship multimodal model. Great for demos and quick evaluation.",
   },
-  {
-    id: "claude-sonnet-4-6",
-    name: "Claude Sonnet 4.6",
-    provider: "Anthropic",
-    description: "Anthropic's latest Sonnet. Strong reasoning and nuanced instruction-following.",
-  },
 ];
 
 // When Otari is configured, additional models become available at runtime
@@ -40,7 +34,7 @@ export const OTARI_MODELS: ModelOption[] = [
 // Guardrail judge models
 export const GUARDRAIL_JUDGES: ModelOption[] = [
   {
-    id: "gpt-4o-mini",
+    id: "gpt-5-nano",
     name: "GPT-5 Nano (fast)",
     provider: "OpenAI",
     description: "Fast, cost-efficient guardrail judge.",
