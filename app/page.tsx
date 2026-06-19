@@ -116,6 +116,32 @@ function CriterionRow({ cv }: { cv: { criterion: string; verdict: string; issues
   );
 }
 
+// ── Live agentic streaming panel ─────────────────────────────────────────────
+function AgenticStreamPanel({ label, events }: { label?: string; events: AgenticEvent[] }) {
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+      <p className="text-sm font-medium text-blue-700 mb-2">⚡ {label ? `${label} — ` : ""}Agentic evaluation in progress...</p>
+      <div className="space-y-1 max-h-32 overflow-y-auto scrollbar-thin">
+        {events.slice(-8).map((e, i) => {
+          if (e.type === "prerun_url") return (
+            <p key={i} className="text-xs text-blue-600">🔗 Checking URL: {e.url.slice(0, 60)}... {e.valid ? "✓" : "✗"}</p>
+          );
+          if (e.type === "prerun_acronym") return (
+            <p key={i} className="text-xs text-blue-600">📝 Acronym check: {e.acronym} → {e.verdict}</p>
+          );
+          if (e.type === "tool_call") return (
+            <p key={i} className="text-xs text-blue-600">🔧 {e.tool}: {(e.args.query || e.args.url || "").slice(0, 60)}</p>
+          );
+          if (e.type === "tool_result") return (
+            <p key={i} className="text-xs text-slate-500 ml-4">↳ {e.result.slice(0, 80)}</p>
+          );
+          return null;
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Guardrail result panel ────────────────────────────────────────────────────
 function GuardrailPanel({
   label,
@@ -512,10 +538,14 @@ export default function Home() {
     translatedScenario: "",
     selectedModel: "gpt-4o",
     generatedResponse: "",
+    generatedResponseTranslated: "",
     guardrailMode: "both",
     nonAgenticResult: null,
     agenticResult: null,
     agenticEvents: [],
+    nonAgenticResultTranslated: null,
+    agenticResultTranslated: null,
+    agenticEventsTranslated: [],
   });
 
   const [loading, setLoading] = useState(false);
@@ -529,7 +559,7 @@ export default function Home() {
   // Editable translation draft
   const [translationDraft, setTranslationDraft] = useState("");
   const [translationEditing, setTranslationEditing] = useState(false);
-  const [langVersion, setLangVersion] = useState<"original" | "translated">("original");
+  const [langVersion, setLangVersion] = useState<"original" | "translated" | "compare">("original");
   const [savedEvaluations, setSavedEvaluations] = useState<SavedEvaluation[]>([]);
   const [showSaved, setShowSaved] = useState(false);
 
@@ -537,6 +567,7 @@ export default function Home() {
 
   const originalMessage = state.scenario?.userMessage || customUserMsg;
   const effectiveTranslation = translationDraft || state.translatedScenario;
+  const compareLanguages = langVersion === "compare" && !!effectiveTranslation;
 
   // Active scenario text for single-mode evaluation
   const activeUserMessage =
@@ -586,90 +617,119 @@ export default function Home() {
         return data.response as string;
       };
 
-      const response = await callGenerate(activeUserMessage);
-      update({ generatedResponse: response, step: 5 });
+      if (compareLanguages) {
+        const [enResponse, translatedResponse] = await Promise.all([
+          callGenerate(originalMessage),
+          callGenerate(effectiveTranslation),
+        ]);
+        update({ generatedResponse: enResponse, generatedResponseTranslated: translatedResponse, step: 5 });
+      } else {
+        const response = await callGenerate(activeUserMessage);
+        update({ generatedResponse: response, generatedResponseTranslated: "", step: 5 });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed");
     } finally {
       setLoading(false);
     }
-  }, [state.selectedModel, activeSysPrompt, activeUserMessage]);
+  }, [state.selectedModel, activeSysPrompt, activeUserMessage, compareLanguages, originalMessage, effectiveTranslation]);
+
+  const runGuardrailFor = useCallback(async (userMessage: string, response: string, slot: "primary" | "translated") => {
+    if (!state.policy || !response) return;
+    const evalPayload = {
+      policy: policyDraft || state.policy.text,
+      systemPrompt: activeSysPrompt,
+      userMessage,
+      assistantResponse: response,
+      judgeModel,
+    };
+
+    if (state.guardrailMode === "nonagentic" || state.guardrailMode === "both") {
+      const res = await fetch("/api/guardrail/nonagentic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(evalPayload),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const result = { ...data.result, judgment_time_s: data.judgment_time_s };
+      update(slot === "primary" ? { nonAgenticResult: result } : { nonAgenticResultTranslated: result });
+    }
+
+    if (state.guardrailMode === "agentic" || state.guardrailMode === "both") {
+      const agEvents: AgenticEvent[] = [];
+      const res = await fetch("/api/guardrail/agentic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(evalPayload),
+      });
+
+      if (!res.body) throw new Error("No stream");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event: AgenticEvent = JSON.parse(line.slice(6));
+            agEvents.push(event);
+            if (event.type === "judgment") {
+              update(
+                slot === "primary"
+                  ? { agenticResult: event.result, agenticEvents: [...agEvents] }
+                  : { agenticResultTranslated: event.result, agenticEventsTranslated: [...agEvents] }
+              );
+            } else {
+              update(slot === "primary" ? { agenticEvents: [...agEvents] } : { agenticEventsTranslated: [...agEvents] });
+            }
+          } catch {}
+        }
+      }
+    }
+  }, [state.policy, state.guardrailMode, policyDraft, activeSysPrompt, judgeModel]);
 
   const handleEvaluate = useCallback(async () => {
     if (!state.policy || !state.generatedResponse) return;
     setLoading(true);
     setError(null);
-    update({ nonAgenticResult: null, agenticResult: null, agenticEvents: [] });
+    update({
+      nonAgenticResult: null, agenticResult: null, agenticEvents: [],
+      nonAgenticResultTranslated: null, agenticResultTranslated: null, agenticEventsTranslated: [],
+    });
 
     try {
-      const evalPayload = {
-        policy: policyDraft || state.policy.text,
-        systemPrompt: activeSysPrompt,
-        userMessage: activeUserMessage,
-        assistantResponse: state.generatedResponse,
-        judgeModel,
-      };
-
-      if (state.guardrailMode === "nonagentic" || state.guardrailMode === "both") {
-        const res = await fetch("/api/guardrail/nonagentic", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(evalPayload),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        update({ nonAgenticResult: { ...data.result, judgment_time_s: data.judgment_time_s } });
-      }
-
-      if (state.guardrailMode === "agentic" || state.guardrailMode === "both") {
-        const agEvents: AgenticEvent[] = [];
-        const res = await fetch("/api/guardrail/agentic", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(evalPayload),
-        });
-
-        if (!res.body) throw new Error("No stream");
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const event: AgenticEvent = JSON.parse(line.slice(6));
-              agEvents.push(event);
-              if (event.type === "judgment") {
-                update({ agenticResult: event.result, agenticEvents: [...agEvents] });
-              } else {
-                update({ agenticEvents: [...agEvents] });
-              }
-            } catch {}
-          }
-        }
+      if (compareLanguages && state.generatedResponseTranslated) {
+        await Promise.all([
+          runGuardrailFor(originalMessage, state.generatedResponse, "primary"),
+          runGuardrailFor(effectiveTranslation, state.generatedResponseTranslated, "translated"),
+        ]);
+      } else {
+        await runGuardrailFor(activeUserMessage, state.generatedResponse, "primary");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Evaluation failed");
     } finally {
       setLoading(false);
     }
-  }, [state, activeSysPrompt, activeUserMessage, judgeModel]);
+  }, [state.policy, state.generatedResponse, state.generatedResponseTranslated, compareLanguages, originalMessage, effectiveTranslation, activeUserMessage, runGuardrailFor]);
 
   const handleNewScenario = useCallback(() => {
     setState({
       step: 1, domain: null, scenario: null, customScenario: "",
       policy: null, targetLanguage: "French", translatedScenario: "",
-      selectedModel: "gpt-4o", generatedResponse: "",
+      selectedModel: "gpt-4o", generatedResponse: "", generatedResponseTranslated: "",
       guardrailMode: "both", nonAgenticResult: null, agenticResult: null, agenticEvents: [],
+      nonAgenticResultTranslated: null, agenticResultTranslated: null, agenticEventsTranslated: [],
     });
-    setCustomUserMsg(""); setCustomSysPrompt(""); setSkipTranslation(false);
+    setCustomUserMsg(""); setCustomSysPrompt(""); setSkipTranslation(false); setLangVersion("original");
   }, []);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1071,6 +1131,7 @@ export default function Home() {
                   {[
                     { v: "original" as const, label: "🇬🇧 English (original)" },
                     { v: "translated" as const, label: `🌐 ${state.targetLanguage} (translated)` },
+                    { v: "compare" as const, label: `⚖️ Compare both` },
                   ].map(({ v, label }) => (
                     <button
                       key={v}
@@ -1088,15 +1149,29 @@ export default function Home() {
                 <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-2">
                   {langVersion === "original" && "The model will receive and respond to the original English scenario."}
                   {langVersion === "translated" && `The model will receive and respond to the ${state.targetLanguage} translation.`}
+                  {langVersion === "compare" && `The model will generate a response for both the English original and the ${state.targetLanguage} translation, so you can compare how the guardrail judges each.`}
                 </p>
               </div>
             )}
 
             {/* Scenario preview */}
-            <div className="bg-white rounded-xl border p-4">
-              <p className="text-xs font-semibold text-slate-500 mb-2">Scenario</p>
-              <p className="text-sm text-slate-700">{activeUserMessage}</p>
-            </div>
+            {compareLanguages ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl border p-4">
+                  <p className="text-xs font-semibold text-slate-500 mb-2">🇬🇧 Scenario (English)</p>
+                  <p className="text-sm text-slate-700">{originalMessage}</p>
+                </div>
+                <div className="bg-white rounded-xl border p-4">
+                  <p className="text-xs font-semibold text-slate-500 mb-2">🌐 Scenario ({state.targetLanguage})</p>
+                  <p className="text-sm text-slate-700">{effectiveTranslation}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border p-4">
+                <p className="text-xs font-semibold text-slate-500 mb-2">Scenario</p>
+                <p className="text-sm text-slate-700">{activeUserMessage}</p>
+              </div>
+            )}
 
             {/* Model selector — 2 models only */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
@@ -1121,25 +1196,51 @@ export default function Home() {
               disabled={loading}
               className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-50 hover:bg-indigo-700 flex items-center gap-2"
             >
-              {loading ? <><span className="animate-spin">↻</span> Generating...</> : "⚡ Generate Response"}
+              {loading
+                ? <><span className="animate-spin">↻</span> Generating...</>
+                : compareLanguages ? "⚡ Generate Both Responses" : "⚡ Generate Response"}
             </button>
 
             {state.generatedResponse && (
               <div className="space-y-3">
-                <div className="bg-white rounded-xl border p-4">
-                  <p className="text-xs font-semibold text-slate-500 mb-2">
-                    Response from {MODELS.find((m) => m.id === state.selectedModel)?.name}
-                  </p>
-                  <div className="text-sm text-slate-700 whitespace-pre-wrap max-h-80 overflow-y-auto scrollbar-thin">
-                    {state.generatedResponse}
+                {compareLanguages ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="bg-white rounded-xl border p-4">
+                      <p className="text-xs font-semibold text-slate-500 mb-2">
+                        🇬🇧 Response (English) · {MODELS.find((m) => m.id === state.selectedModel)?.name}
+                      </p>
+                      <div className="text-sm text-slate-700 whitespace-pre-wrap max-h-80 overflow-y-auto scrollbar-thin">
+                        {state.generatedResponse}
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-xl border p-4">
+                      <p className="text-xs font-semibold text-slate-500 mb-2">
+                        🌐 Response ({state.targetLanguage}) · {MODELS.find((m) => m.id === state.selectedModel)?.name}
+                      </p>
+                      <div className="text-sm text-slate-700 whitespace-pre-wrap max-h-80 overflow-y-auto scrollbar-thin">
+                        {state.generatedResponseTranslated}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-white rounded-xl border p-4">
+                    <p className="text-xs font-semibold text-slate-500 mb-2">
+                      Response from {MODELS.find((m) => m.id === state.selectedModel)?.name}
+                    </p>
+                    <div className="text-sm text-slate-700 whitespace-pre-wrap max-h-80 overflow-y-auto scrollbar-thin">
+                      {state.generatedResponse}
+                    </div>
+                  </div>
+                )}
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-start gap-3">
                   <span className="text-xl">🛡️</span>
                   <div>
                     <p className="text-sm font-semibold text-indigo-800">Ready to evaluate</p>
                     <p className="text-sm text-indigo-700 mt-0.5">
-                      Based on the selected <strong>{state.policy?.name}</strong>, you can now run a guardrail evaluation to see how compliant this response is with your policy.
+                      Based on the selected <strong>{state.policy?.name}</strong>, you can now run a guardrail evaluation
+                      {compareLanguages
+                        ? ` to compare how compliant the English and ${state.targetLanguage} responses are with your policy.`
+                        : " to see how compliant this response is with your policy."}
                     </p>
                   </div>
                 </div>
@@ -1166,23 +1267,55 @@ export default function Home() {
             <div>
               <h2 className="text-xl font-bold text-slate-900">Step 5: Guardrail Evaluation</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Based on the selected <strong>{state.policy?.name}</strong>, run a guardrail to see how compliant the model&apos;s answer is with your policy.
+                Based on the selected <strong>{state.policy?.name}</strong>,
+                {compareLanguages
+                  ? ` run a guardrail to compare how compliant the English and ${state.targetLanguage} responses are with your policy.`
+                  : " run a guardrail to see how compliant the model's answer is with your policy."}
               </p>
             </div>
 
             {/* Scenario + response recap */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl border p-4">
-                <p className="text-xs font-semibold text-slate-500 mb-2">Scenario</p>
-                <p className="text-sm text-slate-700">{activeUserMessage}</p>
+            {compareLanguages ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div className="bg-white rounded-xl border p-4">
+                    <p className="text-xs font-semibold text-slate-500 mb-2">🇬🇧 Scenario (English)</p>
+                    <p className="text-sm text-slate-700">{originalMessage}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border p-4">
+                    <p className="text-xs font-semibold text-slate-500 mb-2">
+                      🇬🇧 Model response · {MODELS.find((m) => m.id === state.selectedModel)?.name}
+                    </p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{state.generatedResponse}</p>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div className="bg-white rounded-xl border p-4">
+                    <p className="text-xs font-semibold text-slate-500 mb-2">🌐 Scenario ({state.targetLanguage})</p>
+                    <p className="text-sm text-slate-700">{effectiveTranslation}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border p-4">
+                    <p className="text-xs font-semibold text-slate-500 mb-2">
+                      🌐 Model response · {MODELS.find((m) => m.id === state.selectedModel)?.name}
+                    </p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{state.generatedResponseTranslated}</p>
+                  </div>
+                </div>
               </div>
-              <div className="bg-white rounded-xl border p-4">
-                <p className="text-xs font-semibold text-slate-500 mb-2">
-                  Model response · {MODELS.find((m) => m.id === state.selectedModel)?.name}
-                </p>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap">{state.generatedResponse}</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl border p-4">
+                  <p className="text-xs font-semibold text-slate-500 mb-2">Scenario</p>
+                  <p className="text-sm text-slate-700">{activeUserMessage}</p>
+                </div>
+                <div className="bg-white rounded-xl border p-4">
+                  <p className="text-xs font-semibold text-slate-500 mb-2">
+                    Model response · {MODELS.find((m) => m.id === state.selectedModel)?.name}
+                  </p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{state.generatedResponse}</p>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Options */}
             <div className="bg-white rounded-xl border p-4 space-y-4">
@@ -1235,43 +1368,52 @@ export default function Home() {
 
             {/* Live streaming indicator */}
             {loading && state.guardrailMode !== "nonagentic" && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm font-medium text-blue-700 mb-2">⚡ Agentic evaluation in progress...</p>
-                <div className="space-y-1 max-h-32 overflow-y-auto scrollbar-thin">
-                  {state.agenticEvents.slice(-8).map((e, i) => {
-                    if (e.type === "prerun_url") return (
-                      <p key={i} className="text-xs text-blue-600">🔗 Checking URL: {e.url.slice(0, 60)}... {e.valid ? "✓" : "✗"}</p>
-                    );
-                    if (e.type === "prerun_acronym") return (
-                      <p key={i} className="text-xs text-blue-600">📝 Acronym check: {e.acronym} → {e.verdict}</p>
-                    );
-                    if (e.type === "tool_call") return (
-                      <p key={i} className="text-xs text-blue-600">🔧 {e.tool}: {(e.args.query || e.args.url || "").slice(0, 60)}</p>
-                    );
-                    if (e.type === "tool_result") return (
-                      <p key={i} className="text-xs text-slate-500 ml-4">↳ {e.result.slice(0, 80)}</p>
-                    );
-                    return null;
-                  })}
-                </div>
+              <div className={`grid gap-3 ${compareLanguages ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+                <AgenticStreamPanel label={compareLanguages ? "🇬🇧 English" : undefined} events={state.agenticEvents} />
+                {compareLanguages && (
+                  <AgenticStreamPanel label={`🌐 ${state.targetLanguage}`} events={state.agenticEventsTranslated} />
+                )}
               </div>
             )}
 
             {/* Results */}
-            {(state.nonAgenticResult || state.agenticResult) && (
+            {(state.nonAgenticResult || state.agenticResult || state.nonAgenticResultTranslated || state.agenticResultTranslated) && (
               <>
-                <div className={`grid gap-6 ${state.guardrailMode === "both" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-                  {state.nonAgenticResult && (
-                    <GuardrailPanel label="🔍 Non-Agentic Evaluation" result={state.nonAgenticResult} />
-                  )}
-                  {state.agenticResult && (
-                    <GuardrailPanel
-                      label="⚡ Agentic Evaluation"
-                      result={state.agenticResult}
-                      events={state.agenticEvents}
-                    />
-                  )}
-                </div>
+                {compareLanguages ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <p className="text-sm font-bold text-slate-600">🇬🇧 English</p>
+                      {state.nonAgenticResult && (
+                        <GuardrailPanel label="🔍 Non-Agentic Evaluation" result={state.nonAgenticResult} />
+                      )}
+                      {state.agenticResult && (
+                        <GuardrailPanel label="⚡ Agentic Evaluation" result={state.agenticResult} events={state.agenticEvents} />
+                      )}
+                    </div>
+                    <div className="space-y-4">
+                      <p className="text-sm font-bold text-slate-600">🌐 {state.targetLanguage}</p>
+                      {state.nonAgenticResultTranslated && (
+                        <GuardrailPanel label="🔍 Non-Agentic Evaluation" result={state.nonAgenticResultTranslated} />
+                      )}
+                      {state.agenticResultTranslated && (
+                        <GuardrailPanel label="⚡ Agentic Evaluation" result={state.agenticResultTranslated} events={state.agenticEventsTranslated} />
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`grid gap-6 ${state.guardrailMode === "both" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+                    {state.nonAgenticResult && (
+                      <GuardrailPanel label="🔍 Non-Agentic Evaluation" result={state.nonAgenticResult} />
+                    )}
+                    {state.agenticResult && (
+                      <GuardrailPanel
+                        label="⚡ Agentic Evaluation"
+                        result={state.agenticResult}
+                        events={state.agenticEvents}
+                      />
+                    )}
+                  </div>
+                )}
 
                 {/* Human evaluation form — submitting saves to both DB and browser */}
                 <div className="border-t pt-6">

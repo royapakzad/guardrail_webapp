@@ -90,9 +90,13 @@ export interface WizardState {
   // Step 4
   selectedModel: string;
   generatedResponse: string;
+  generatedResponseTranslated: string;
   // Step 5
   guardrailMode: "nonagentic" | "agentic" | "both";
   nonAgenticResult: GuardrailResult | null;
   agenticResult: GuardrailResult | null;
   agenticEvents: AgenticEvent[];
+  nonAgenticResultTranslated: GuardrailResult | null;
+  agenticResultTranslated: GuardrailResult | null;
+  agenticEventsTranslated: AgenticEvent[];
 }
