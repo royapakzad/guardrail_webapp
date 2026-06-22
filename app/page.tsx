@@ -124,16 +124,16 @@ function AgenticStreamPanel({ label, events }: { label?: string; events: Agentic
       <div className="space-y-1 max-h-32 overflow-y-auto scrollbar-thin">
         {events.slice(-8).map((e, i) => {
           if (e.type === "prerun_url") return (
-            <p key={i} className="text-xs text-blue-600">🔗 Checking URL: {e.url.slice(0, 60)}... {e.valid ? "✓" : "✗"}</p>
+            <p key={i} className="text-xs text-blue-600 break-all">🔗 Checking URL: {e.url} {e.valid ? "✓" : "✗"}</p>
           );
           if (e.type === "prerun_acronym") return (
             <p key={i} className="text-xs text-blue-600">📝 Acronym check: {e.acronym} → {e.verdict}</p>
           );
           if (e.type === "tool_call") return (
-            <p key={i} className="text-xs text-blue-600">🔧 {e.tool}: {(e.args.query || e.args.url || "").slice(0, 60)}</p>
+            <p key={i} className="text-xs text-blue-600 break-all">🔧 {e.tool}: {e.args.query || e.args.url || ""}</p>
           );
           if (e.type === "tool_result") return (
-            <p key={i} className="text-xs text-slate-500 ml-4">↳ {e.result.slice(0, 80)}</p>
+            <p key={i} className="text-xs text-slate-500 ml-4 break-words">↳ {e.result}</p>
           );
           return null;
         })}
@@ -193,24 +193,50 @@ function ReflectionSection({
 
 // ── Guardrail result panel ────────────────────────────────────────────────────
 function GuardrailPanel({
-  label,
   result,
   events,
+  language,
+  targetLanguage,
 }: {
-  label: string;
   result: GuardrailResult | null;
   events?: AgenticEvent[];
+  language?: "en" | "translated";
+  targetLanguage?: string;
 }) {
   const [showExplanation, setShowExplanation] = useState(false);
 
   if (!result) return null;
 
+  const isAgentic = events !== undefined;
+
+  // Language theming
+  const lang = language === "en"
+    ? { border: "border-l-[4px] border-l-blue-400", headerBg: "bg-blue-50", pillCls: "bg-blue-100 text-blue-700", pillLabel: `🇬🇧 English` }
+    : language === "translated"
+    ? { border: "border-l-[4px] border-l-violet-400", headerBg: "bg-violet-50", pillCls: "bg-violet-100 text-violet-700", pillLabel: `🌐 ${targetLanguage ?? ""}` }
+    : { border: "", headerBg: "bg-slate-50", pillCls: "", pillLabel: "" };
+
+  // Mode theming
+  const modeCls = isAgentic
+    ? "bg-teal-100 text-teal-700"
+    : "bg-slate-100 text-slate-500";
+  const modeLabel = isAgentic ? "⚡ Agentic" : "📄 Non-Agentic";
+
   const toolEvents = events?.filter((e) => e.type === "tool_call" || e.type === "tool_result" || e.type === "prerun_url" || e.type === "prerun_acronym") ?? [];
 
   return (
-    <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
-      <div className="px-5 py-4 border-b bg-slate-50 flex items-center justify-between">
-        <h3 className="font-semibold text-slate-800">{label}</h3>
+    <div className={`border rounded-xl overflow-hidden bg-white shadow-sm ${lang.border}`}>
+      <div className={`px-5 py-3.5 border-b ${lang.headerBg} flex items-center justify-between gap-3`}>
+        <div className="flex items-center gap-2 flex-wrap">
+          {language && (
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${lang.pillCls}`}>
+              {lang.pillLabel}
+            </span>
+          )}
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${modeCls}`}>
+            {modeLabel}
+          </span>
+        </div>
         <VerdictBadge verdict={result.overall_verdict} score={result.score} />
       </div>
 
@@ -232,10 +258,12 @@ function GuardrailPanel({
             <p className="text-xs font-semibold text-slate-500 mb-2">URL checks</p>
             <div className="space-y-1">
               {result.url_checks.map((u, i) => (
-                <div key={i} className={`flex items-center gap-2 text-xs px-2 py-1 rounded ${u.valid ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                  <span>{u.valid ? "✓" : "✗"}</span>
-                  <span className="font-mono truncate max-w-xs">{u.url}</span>
-                  <span className="ml-auto">HTTP {u.status_code ?? "?"}</span>
+                <div key={i} className={`text-xs px-2 py-1.5 rounded space-y-0.5 ${u.valid ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                  <div className="flex items-center gap-2">
+                    <span>{u.valid ? "✓" : "✗"}</span>
+                    <span className="ml-auto shrink-0">HTTP {u.status_code ?? "?"}</span>
+                  </div>
+                  <a href={u.url} target="_blank" rel="noopener noreferrer" className="font-mono break-all underline underline-offset-2 opacity-80 hover:opacity-100 block">{u.url}</a>
                 </div>
               ))}
             </div>
@@ -246,13 +274,15 @@ function GuardrailPanel({
         {toolEvents.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-slate-500 mb-2">Tool activity</p>
-            <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-thin">
+            <div className="space-y-1 max-h-72 overflow-y-auto scrollbar-thin">
               {toolEvents.map((e, i) => {
                 if (e.type === "prerun_url") return (
-                  <div key={i} className={`text-xs px-2 py-1 rounded flex gap-2 ${e.valid ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                    <span>🔗 URL pre-check</span>
-                    <span className="font-mono truncate">{e.url}</span>
-                    <span className="ml-auto">{e.valid ? "✓" : "✗"} HTTP {e.status}</span>
+                  <div key={i} className={`text-xs px-2 py-1.5 rounded space-y-0.5 ${e.valid ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0">🔗 URL pre-check</span>
+                      <span className="ml-auto shrink-0">{e.valid ? "✓" : "✗"} HTTP {e.status}</span>
+                    </div>
+                    <a href={e.url} target="_blank" rel="noopener noreferrer" className="font-mono break-all underline underline-offset-2 opacity-80 hover:opacity-100">{e.url}</a>
                   </div>
                 );
                 if (e.type === "prerun_acronym") return (
@@ -263,15 +293,19 @@ function GuardrailPanel({
                   </div>
                 );
                 if (e.type === "tool_call") return (
-                  <div key={i} className="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700">
+                  <div key={i} className="text-xs px-2 py-1.5 rounded bg-indigo-50 text-indigo-700 space-y-0.5">
                     <span className="font-medium">🔧 {e.tool}</span>
-                    {e.args?.query && <span className="text-indigo-500 ml-1">"{e.args.query.slice(0, 60)}"</span>}
-                    {e.args?.url && <span className="text-indigo-500 ml-1 font-mono">{e.args.url.slice(0, 60)}</span>}
+                    {e.args?.query && (
+                      <p className="text-indigo-600 break-words">"{e.args.query}"</p>
+                    )}
+                    {e.args?.url && (
+                      <a href={e.args.url} target="_blank" rel="noopener noreferrer" className="font-mono break-all block text-indigo-500 underline underline-offset-2 hover:text-indigo-700">{e.args.url}</a>
+                    )}
                   </div>
                 );
                 if (e.type === "tool_result") return (
-                  <div key={i} className="text-xs px-2 py-1 ml-4 rounded bg-slate-50 text-slate-600">
-                    ↳ {e.result.slice(0, 120)}
+                  <div key={i} className="text-xs px-2 py-1.5 ml-4 rounded bg-slate-50 text-slate-600 break-words">
+                    ↳ {e.result}
                   </div>
                 );
                 return null;
@@ -643,15 +677,20 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
           {/* Guardrail judgments — English */}
           {(ev.nonAgenticResult || ev.agenticResult) && (
             <section>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
-                Guardrail Judgments{hasTranslated ? " — English" : ""}
-              </p>
-              <div className={`grid gap-6 ${enVerdicts.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Guardrail Judgments</p>
+              {hasTranslated && (
+                <div className="flex items-center gap-2 bg-blue-600 text-white rounded-xl px-4 py-2 mb-3">
+                  <span>🇬🇧</span>
+                  <span className="font-semibold text-sm">English</span>
+                  <span className="ml-auto text-blue-200 text-xs">original</span>
+                </div>
+              )}
+              <div className={`grid gap-4 ${enVerdicts.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
                 {ev.nonAgenticResult && (
-                  <GuardrailPanel label="Non-Agentic" result={ev.nonAgenticResult} />
+                  <GuardrailPanel result={ev.nonAgenticResult} language={hasTranslated ? "en" : undefined} />
                 )}
                 {ev.agenticResult && (
-                  <GuardrailPanel label="Agentic" result={ev.agenticResult} events={ev.agenticEvents} />
+                  <GuardrailPanel result={ev.agenticResult} events={ev.agenticEvents} language={hasTranslated ? "en" : undefined} />
                 )}
               </div>
             </section>
@@ -660,15 +699,17 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
           {/* Guardrail judgments — Translated */}
           {hasTranslated && (
             <section>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
-                Guardrail Judgments — {ev.targetLanguage}
-              </p>
-              <div className={`grid gap-6 ${(ev.nonAgenticResultTranslated && ev.agenticResultTranslated) ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+              <div className="flex items-center gap-2 bg-violet-600 text-white rounded-xl px-4 py-2 mb-3">
+                <span>🌐</span>
+                <span className="font-semibold text-sm">{ev.targetLanguage}</span>
+                <span className="ml-auto text-violet-200 text-xs">translated</span>
+              </div>
+              <div className={`grid gap-4 ${(ev.nonAgenticResultTranslated && ev.agenticResultTranslated) ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
                 {ev.nonAgenticResultTranslated && (
-                  <GuardrailPanel label="Non-Agentic" result={ev.nonAgenticResultTranslated} />
+                  <GuardrailPanel result={ev.nonAgenticResultTranslated} language="translated" targetLanguage={ev.targetLanguage} />
                 )}
                 {ev.agenticResultTranslated && (
-                  <GuardrailPanel label="Agentic" result={ev.agenticResultTranslated} events={ev.agenticEventsTranslated} />
+                  <GuardrailPanel result={ev.agenticResultTranslated} events={ev.agenticEventsTranslated} language="translated" targetLanguage={ev.targetLanguage} />
                 )}
               </div>
             </section>
@@ -1674,36 +1715,42 @@ export default function Home() {
               <>
                 {compareLanguages ? (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <p className="text-sm font-bold text-slate-600">🇬🇧 English</p>
+                    {/* English column */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 bg-blue-600 text-white rounded-xl px-4 py-2.5">
+                        <span className="text-base">🇬🇧</span>
+                        <span className="font-semibold text-sm">English</span>
+                        <span className="ml-auto text-blue-200 text-xs">original</span>
+                      </div>
                       {state.nonAgenticResult && (
-                        <GuardrailPanel label="🔍 Non-Agentic Evaluation" result={state.nonAgenticResult} />
+                        <GuardrailPanel result={state.nonAgenticResult} language="en" />
                       )}
                       {state.agenticResult && (
-                        <GuardrailPanel label="⚡ Agentic Evaluation" result={state.agenticResult} events={state.agenticEvents} />
+                        <GuardrailPanel result={state.agenticResult} events={state.agenticEvents} language="en" />
                       )}
                     </div>
-                    <div className="space-y-4">
-                      <p className="text-sm font-bold text-slate-600">🌐 {state.targetLanguage}</p>
+                    {/* Translated column */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 bg-violet-600 text-white rounded-xl px-4 py-2.5">
+                        <span className="text-base">🌐</span>
+                        <span className="font-semibold text-sm">{state.targetLanguage}</span>
+                        <span className="ml-auto text-violet-200 text-xs">translated</span>
+                      </div>
                       {state.nonAgenticResultTranslated && (
-                        <GuardrailPanel label="🔍 Non-Agentic Evaluation" result={state.nonAgenticResultTranslated} />
+                        <GuardrailPanel result={state.nonAgenticResultTranslated} language="translated" targetLanguage={state.targetLanguage} />
                       )}
                       {state.agenticResultTranslated && (
-                        <GuardrailPanel label="⚡ Agentic Evaluation" result={state.agenticResultTranslated} events={state.agenticEventsTranslated} />
+                        <GuardrailPanel result={state.agenticResultTranslated} events={state.agenticEventsTranslated} language="translated" targetLanguage={state.targetLanguage} />
                       )}
                     </div>
                   </div>
                 ) : (
                   <div className={`grid gap-6 ${state.guardrailMode === "both" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
                     {state.nonAgenticResult && (
-                      <GuardrailPanel label="🔍 Non-Agentic Evaluation" result={state.nonAgenticResult} />
+                      <GuardrailPanel result={state.nonAgenticResult} />
                     )}
                     {state.agenticResult && (
-                      <GuardrailPanel
-                        label="⚡ Agentic Evaluation"
-                        result={state.agenticResult}
-                        events={state.agenticEvents}
-                      />
+                      <GuardrailPanel result={state.agenticResult} events={state.agenticEvents} />
                     )}
                   </div>
                 )}
