@@ -22,6 +22,20 @@ async function ensureTable() {
       general_observations TEXT
     )
   `;
+  // Migrate: add columns introduced after initial deploy
+  const migrations = [
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS llm_response TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS policy_text TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS agentic_events JSONB`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS scenario_patterns TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS scenario_challenges TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS policy_granularity TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS policy_scenario_inform TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS policy_editable TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS other_tools TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS multilingual_diff TEXT`,
+  ];
+  await Promise.all(migrations);
 }
 
 export async function POST(req: NextRequest) {
@@ -31,16 +45,29 @@ export async function POST(req: NextRequest) {
       evaluatorName,
       scenario,
       policyName,
+      policyText,
       model,
+      llmResponse,
       nonagenticVerdict,
       nonagenticScore,
       nonAgenticResult,
       agenticVerdict,
       agenticScore,
       agenticResult,
+      agenticEvents,
       guardrailMode,
       judgeModel,
+      // Step 1 reflections
+      scenarioPatterns,
+      scenarioChallenges,
+      // Step 2 reflections
+      policyGranularity,
+      policyScenarioInform,
+      policyEditable,
+      // Step 5 reflections
       agenticDiff,
+      otherTools,
+      multilingualDiff,
       generalObservations,
     } = body;
 
@@ -48,19 +75,26 @@ export async function POST(req: NextRequest) {
 
     await sql`
       INSERT INTO workshop_responses (
-        evaluator_name, scenario, policy_name, model,
+        evaluator_name, scenario, policy_name, policy_text, model, llm_response,
         nonagentic_verdict, nonagentic_score, nonagentic_result,
-        agentic_verdict, agentic_score, agentic_result,
+        agentic_verdict, agentic_score, agentic_result, agentic_events,
         guardrail_mode, judge_model,
-        agentic_diff, general_observations
+        scenario_patterns, scenario_challenges,
+        policy_granularity, policy_scenario_inform, policy_editable,
+        agentic_diff, other_tools, multilingual_diff, general_observations
       ) VALUES (
-        ${evaluatorName || null}, ${scenario}, ${policyName}, ${model || null},
+        ${evaluatorName || null}, ${scenario}, ${policyName}, ${policyText || null},
+        ${model || null}, ${llmResponse || null},
         ${nonagenticVerdict || null}, ${nonagenticScore ?? null},
         ${nonAgenticResult ? JSON.stringify(nonAgenticResult) : null},
         ${agenticVerdict || null}, ${agenticScore ?? null},
         ${agenticResult ? JSON.stringify(agenticResult) : null},
+        ${agenticEvents ? JSON.stringify(agenticEvents) : null},
         ${guardrailMode || null}, ${judgeModel || null},
-        ${agenticDiff || null}, ${generalObservations || null}
+        ${scenarioPatterns || null}, ${scenarioChallenges || null},
+        ${policyGranularity || null}, ${policyScenarioInform || null}, ${policyEditable || null},
+        ${agenticDiff || null}, ${otherTools || null},
+        ${multilingualDiff || null}, ${generalObservations || null}
       )
     `;
 

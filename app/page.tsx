@@ -142,6 +142,55 @@ function AgenticStreamPanel({ label, events }: { label?: string; events: Agentic
   );
 }
 
+// ── Reflection questions section ─────────────────────────────────────────────
+function ReflectionSection({
+  questions,
+  answers,
+  onChange,
+}: {
+  questions: { key: string; label: string }[];
+  answers: Record<string, string>;
+  onChange: (key: string, val: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const answered = questions.filter((q) => (answers[q.key] || "").trim()).length;
+  return (
+    <div className="border border-amber-200 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-5 py-3 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-amber-800">📝 Reflection Questions</span>
+          {answered > 0 && (
+            <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+              {answered}/{questions.length} answered
+            </span>
+          )}
+        </div>
+        <span className="text-amber-500 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 pt-4 space-y-4 border-t border-amber-200 bg-amber-50">
+          {questions.map((q, i) => (
+            <div key={q.key}>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">
+                {i + 1}. {q.label}
+              </label>
+              <textarea
+                value={answers[q.key] || ""}
+                onChange={(e) => onChange(q.key, e.target.value)}
+                placeholder="Your thoughts..."
+                className="w-full h-24 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none bg-white"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Guardrail result panel ────────────────────────────────────────────────────
 function GuardrailPanel({
   label,
@@ -268,31 +317,58 @@ function GuardrailPanel({
   );
 }
 
-// ── Human evaluator form ─────────────────────────────────────────────────────
-function HumanEvalForm({
+// ── Submit panel (step 5 reflections + final submission) ─────────────────────
+const STEP5_QUESTIONS = [
+  {
+    key: "agenticDiff",
+    label:
+      "Inspect the full trace of the guardrail judgments. How do the guardrails differ between agentic and non-agentic judgment?",
+  },
+  {
+    key: "otherTools",
+    label: "What other tools would you give an agentic guardrail?",
+  },
+  {
+    key: "multilingualDiff",
+    label:
+      "If you chose non-English mode, what differences have you observed in guardrail judgments between English and non-English?",
+  },
+  {
+    key: "generalObservations",
+    label: "Any other general observations about the policy, the model response, or guardrail behavior?",
+  },
+];
+
+function SubmitPanel({
   scenario,
   policyName,
+  policyText,
   model,
+  llmResponse,
   nonAgenticResult,
   agenticResult,
   agenticEvents,
   guardrailMode,
   judgeModel,
+  reflections,
+  onReflectionChange,
   onSaved,
 }: {
   scenario: string;
   policyName: string;
+  policyText: string;
   model: string;
+  llmResponse: string;
   nonAgenticResult: GuardrailResult | null;
   agenticResult: GuardrailResult | null;
   agenticEvents: AgenticEvent[];
   guardrailMode: string;
   judgeModel: string;
+  reflections: Record<string, string>;
+  onReflectionChange: (key: string, val: string) => void;
   onSaved: (ev: SavedEvaluation) => void;
 }) {
   const [name, setName] = useState("");
-  const [agenticDiff, setAgenticDiff] = useState("");
-  const [generalObservations, setGeneralObservations] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -308,36 +384,47 @@ function HumanEvalForm({
           evaluatorName: name,
           scenario,
           policyName,
+          policyText,
           model,
+          llmResponse,
           nonagenticVerdict: nonAgenticResult?.overall_verdict ?? null,
           nonagenticScore: nonAgenticResult?.score ?? null,
           nonAgenticResult,
           agenticVerdict: agenticResult?.overall_verdict ?? null,
           agenticScore: agenticResult?.score ?? null,
           agenticResult,
+          agenticEvents,
           guardrailMode,
           judgeModel,
-          agenticDiff,
-          generalObservations,
+          // All reflections
+          scenarioPatterns: reflections.scenarioPatterns,
+          scenarioChallenges: reflections.scenarioChallenges,
+          policyGranularity: reflections.policyGranularity,
+          policyScenarioInform: reflections.policyScenarioInform,
+          policyEditable: reflections.policyEditable,
+          agenticDiff: reflections.agenticDiff,
+          otherTools: reflections.otherTools,
+          multilingualDiff: reflections.multilingualDiff,
+          generalObservations: reflections.generalObservations,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Submission failed");
-      // Save to browser state
       onSaved({
         id: Date.now().toString(),
         savedAt: new Date(),
+        evaluatorName: name,
         scenario,
         policy: policyName,
+        policyText,
         model,
+        llmResponse,
         guardrailMode,
         judgeModel,
         nonAgenticResult,
         agenticResult,
         agenticEvents,
-        evaluatorName: name,
-        agenticDiff,
-        generalObservations,
+        reflections: { ...reflections },
       });
       setSubmitted(true);
     } catch (e) {
@@ -351,8 +438,10 @@ function HumanEvalForm({
     return (
       <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
         <p className="text-3xl mb-2">✓</p>
-        <p className="font-semibold text-green-800">Response saved!</p>
-        <p className="text-sm text-green-600 mt-1">Thank you for your observations.</p>
+        <p className="font-semibold text-green-800">All responses saved!</p>
+        <p className="text-sm text-green-600 mt-1">
+          Your full report is now available in the Saved Evaluations panel below.
+        </p>
       </div>
     );
   }
@@ -360,63 +449,54 @@ function HumanEvalForm({
   return (
     <div className="bg-white border-2 border-indigo-100 rounded-xl p-6 space-y-5">
       <div>
-        <h3 className="font-semibold text-slate-800">Your Observations</h3>
-        <p className="text-sm text-slate-500 mt-0.5">Share what you noticed after seeing both evaluations.</p>
+        <h3 className="font-semibold text-slate-800">Step 5 Reflection Questions</h3>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Answer these after reviewing the guardrail results above.
+        </p>
       </div>
 
-      {/* Name */}
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-1">Your name (optional)</label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Jane Smith"
-          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
-      </div>
+      {STEP5_QUESTIONS.map((q, i) => (
+        <div key={q.key}>
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">
+            {i + 1}. {q.label}
+          </label>
+          <textarea
+            value={reflections[q.key] || ""}
+            onChange={(e) => onReflectionChange(q.key, e.target.value)}
+            placeholder="Your thoughts..."
+            className="w-full h-24 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+          />
+        </div>
+      ))}
 
-      {/* Agentic vs non-agentic differences */}
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-1">
-          What differences do you see in the agentic vs. non-agentic judgment?
-        </label>
-        <textarea
-          value={agenticDiff}
-          onChange={(e) => setAgenticDiff(e.target.value)}
-          placeholder="e.g. The agentic version checked URLs and changed its verdict, the non-agentic missed X..."
-          className="w-full h-28 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-        />
-      </div>
+      <div className="border-t pt-5 space-y-4">
+        <div>
+          <label className="text-sm font-medium text-slate-700 block mb-1">Your name (optional)</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Jane Smith"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
 
-      {/* General observations */}
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-1">
-          General observations
-        </label>
-        <textarea
-          value={generalObservations}
-          onChange={(e) => setGeneralObservations(e.target.value)}
-          placeholder="Anything else you noticed — about the policy, the model response, or the guardrail behavior..."
-          className="w-full h-28 text-sm border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-        />
-      </div>
-
-      {submitError && (
-        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{submitError}</p>
-      )}
-
-      <button
-        onClick={handleSubmit}
-        disabled={submitting}
-        className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 hover:bg-indigo-700 flex items-center gap-2 transition-colors"
-      >
-        {submitting ? (
-          <><span className="animate-spin">↻</span> Saving...</>
-        ) : (
-          "📝 Submit Observations"
+        {submitError && (
+          <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{submitError}</p>
         )}
-      </button>
+
+        <button
+          onClick={handleSubmit}
+          disabled={submitting}
+          className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 hover:bg-indigo-700 flex items-center gap-2 transition-colors"
+        >
+          {submitting ? (
+            <><span className="animate-spin">↻</span> Saving...</>
+          ) : (
+            "📝 Save All Responses & Generate Report"
+          )}
+        </button>
+      </div>
     </div>
   );
 }
@@ -425,21 +505,49 @@ function HumanEvalForm({
 interface SavedEvaluation {
   id: string;
   savedAt: Date;
+  evaluatorName: string;
   scenario: string;
   policy: string;
+  policyText: string;
   model: string;
+  llmResponse: string;
   guardrailMode: string;
   judgeModel: string;
   nonAgenticResult: GuardrailResult | null;
   agenticResult: GuardrailResult | null;
   agenticEvents: AgenticEvent[];
-  // Human eval
-  evaluatorName: string;
-  agenticDiff: string;
-  generalObservations: string;
+  reflections: Record<string, string>;
 }
 
-// ── Saved evaluation card ────────────────────────────────────────────────────
+// ── Reflection answer groups for the report ───────────────────────────────────
+const REFLECTION_GROUPS = [
+  {
+    label: "Step 1 — Scenario Selection",
+    questions: [
+      { key: "scenarioPatterns", label: "What kinds of patterns can you glean from the sample scenarios?" },
+      { key: "scenarioChallenges", label: "What challenges did you encounter when choosing or creating a scenario?" },
+    ],
+  },
+  {
+    label: "Step 2 — Policy",
+    questions: [
+      { key: "policyGranularity", label: "Why do you think policies need to be specified so granularly?" },
+      { key: "policyScenarioInform", label: "What aspects of the scenario most informed the policy development? What aspects were redundant or overly specific?" },
+      { key: "policyEditable", label: "Attempt to edit one of the policies. What makes a component editable?" },
+    ],
+  },
+  {
+    label: "Step 5 — Guardrail Judgment",
+    questions: [
+      { key: "agenticDiff", label: "How do the guardrails differ between agentic and non-agentic judgment?" },
+      { key: "otherTools", label: "What other tools would you give an agentic guardrail?" },
+      { key: "multilingualDiff", label: "What differences have you observed between English and non-English guardrail judgments?" },
+      { key: "generalObservations", label: "General observations" },
+    ],
+  },
+];
+
+// ── Saved evaluation card (full report) ──────────────────────────────────────
 function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
 
@@ -450,6 +558,19 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
 
   const time = ev.savedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const date = ev.savedAt.toLocaleDateString([], { month: "short", day: "numeric" });
+
+  const hasReflections = Object.values(ev.reflections).some((v) => v?.trim());
+
+  // Collect all websites used (from agentic tool calls + url_checks)
+  const websitesUsed: string[] = [];
+  ev.agenticEvents
+    .filter((e) => e.type === "tool_call")
+    .forEach((e) => {
+      if (e.type === "tool_call" && e.args?.url) websitesUsed.push(e.args.url);
+    });
+  ev.agenticResult?.url_checks?.forEach((u) => {
+    if (!websitesUsed.includes(u.url)) websitesUsed.push(u.url);
+  });
 
   return (
     <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
@@ -464,6 +585,7 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
             <span className="bg-slate-100 px-2 py-0.5 rounded">{ev.model}</span>
             <span className="bg-slate-100 px-2 py-0.5 rounded">{ev.guardrailMode}</span>
             <span className="text-slate-400">{date} {time}</span>
+            {ev.evaluatorName && <span className="text-slate-500 font-medium">{ev.evaluatorName}</span>}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -475,38 +597,91 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
       </button>
 
       {open && (
-        <div className="border-t px-5 py-4 space-y-4 bg-slate-50">
-          <div>
-            <p className="text-xs font-semibold text-slate-500 mb-1">Scenario</p>
+        <div className="border-t px-5 py-5 space-y-6 bg-slate-50">
+
+          {/* Scenario */}
+          <section>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Scenario</p>
             <p className="text-sm text-slate-700 whitespace-pre-wrap">{ev.scenario}</p>
-          </div>
-          <div className={`grid gap-6 ${verdicts.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-            {ev.nonAgenticResult && (
-              <GuardrailPanel label="🔍 Non-Agentic" result={ev.nonAgenticResult} />
-            )}
-            {ev.agenticResult && (
-              <GuardrailPanel label="⚡ Agentic" result={ev.agenticResult} events={ev.agenticEvents} />
-            )}
-          </div>
-          {(ev.agenticDiff || ev.generalObservations) && (
-            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-indigo-700">
-                {ev.evaluatorName ? `${ev.evaluatorName}'s observations` : "Your observations"}
+          </section>
+
+          {/* LLM Response */}
+          {ev.llmResponse && (
+            <section>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
+                LLM Response · {ev.model}
               </p>
-              {ev.agenticDiff && (
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-0.5">Agentic vs. non-agentic differences</p>
-                  <p className="text-sm text-slate-700">{ev.agenticDiff}</p>
-                </div>
+              <div className="bg-white border rounded-lg p-4 text-sm text-slate-700 whitespace-pre-wrap max-h-60 overflow-y-auto scrollbar-thin">
+                {ev.llmResponse}
+              </div>
+            </section>
+          )}
+
+          {/* Policy */}
+          {ev.policyText && (
+            <section>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
+                Policy Used · {ev.policy}
+              </p>
+              <pre className="bg-white border rounded-lg p-4 text-xs text-slate-600 whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-thin">
+                {ev.policyText}
+              </pre>
+            </section>
+          )}
+
+          {/* Guardrail judgments */}
+          <section>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Guardrail Judgments</p>
+            <div className={`grid gap-6 ${verdicts.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+              {ev.nonAgenticResult && (
+                <GuardrailPanel label="🔍 Non-Agentic" result={ev.nonAgenticResult} />
               )}
-              {ev.generalObservations && (
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-0.5">General observations</p>
-                  <p className="text-sm text-slate-700">{ev.generalObservations}</p>
-                </div>
+              {ev.agenticResult && (
+                <GuardrailPanel label="⚡ Agentic" result={ev.agenticResult} events={ev.agenticEvents} />
               )}
             </div>
+          </section>
+
+          {/* Websites used */}
+          {websitesUsed.length > 0 && (
+            <section>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
+                Websites Used for Claim Verification
+              </p>
+              <div className="space-y-1">
+                {websitesUsed.map((url, i) => (
+                  <div key={i} className="text-xs font-mono text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded truncate">
+                    {url}
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
+
+          {/* Reflection answers */}
+          {hasReflections && (
+            <section>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Reflection Answers</p>
+              <div className="space-y-4">
+                {REFLECTION_GROUPS.map((group) => {
+                  const answered = group.questions.filter((q) => ev.reflections[q.key]?.trim());
+                  if (!answered.length) return null;
+                  return (
+                    <div key={group.label} className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                      <p className="text-xs font-semibold text-amber-800">{group.label}</p>
+                      {answered.map((q) => (
+                        <div key={q.key}>
+                          <p className="text-xs font-semibold text-slate-500 mb-0.5">{q.label}</p>
+                          <p className="text-sm text-slate-700">{ev.reflections[q.key]}</p>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="text-xs text-red-500 hover:text-red-700"
@@ -601,6 +776,10 @@ export default function Home() {
   });
 
   const [showWelcome, setShowWelcome] = useState(true);
+  const [reflections, setReflections] = useState<Record<string, string>>({});
+  const updateReflection = (key: string, val: string) =>
+    setReflections((r) => ({ ...r, [key]: val }));
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [judgeModel, setJudgeModel] = useState("gpt-5-nano");
@@ -782,7 +961,7 @@ export default function Home() {
       guardrailMode: "both", nonAgenticResult: null, agenticResult: null, agenticEvents: [],
       nonAgenticResultTranslated: null, agenticResultTranslated: null, agenticEventsTranslated: [],
     });
-    setCustomUserMsg(""); setCustomSysPrompt(""); setSkipTranslation(false); setLangVersion("original");
+    setCustomUserMsg(""); setCustomSysPrompt(""); setSkipTranslation(false); setLangVersion("original"); setReflections({});
   }, []);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -937,6 +1116,15 @@ export default function Home() {
             >
               Continue → Choose Policy
             </button>
+
+            <ReflectionSection
+              questions={[
+                { key: "scenarioPatterns", label: "What kinds of patterns can you glean from the sample scenarios?" },
+                { key: "scenarioChallenges", label: "What challenges did you encounter when choosing or creating a scenario?" },
+              ]}
+              answers={reflections}
+              onChange={updateReflection}
+            />
           </div>
         )}
 
@@ -1082,6 +1270,16 @@ export default function Home() {
                 Continue → Translate
               </button>
             </div>
+
+            <ReflectionSection
+              questions={[
+                { key: "policyGranularity", label: "Why do you think policies need to be specified so granularly?" },
+                { key: "policyScenarioInform", label: "If you tried to develop your own scenario, what aspects of the scenario most informed the policy development? What aspects were redundant or overly specific?" },
+                { key: "policyEditable", label: "Attempt to edit one of the policies. What makes a component editable?" },
+              ]}
+              answers={reflections}
+              onChange={updateReflection}
+            />
           </div>
         )}
 
@@ -1472,18 +1670,22 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Human evaluation form — submitting saves to both DB and browser */}
+                {/* Submit panel — step 5 reflections + final save */}
                 <div className="border-t pt-6">
-                  <HumanEvalForm
+                  <SubmitPanel
                     scenario={activeUserMessage}
                     policyName={state.policy?.name ?? "Unknown"}
+                    policyText={policyDraft || (state.policy?.text ?? "")}
                     model={MODELS.find((m) => m.id === state.selectedModel)?.name ?? state.selectedModel}
+                    llmResponse={state.generatedResponse}
                     nonAgenticResult={state.nonAgenticResult}
                     agenticResult={state.agenticResult}
                     agenticEvents={state.agenticEvents}
                     guardrailMode={state.guardrailMode}
                     judgeModel={judgeModel}
-                    onSaved={(ev) => setSavedEvaluations((prev) => [ev, ...prev])}
+                    reflections={reflections}
+                    onReflectionChange={updateReflection}
+                    onSaved={(ev) => { setSavedEvaluations((prev) => [ev, ...prev]); setShowSaved(true); }}
                   />
                 </div>
               </>
