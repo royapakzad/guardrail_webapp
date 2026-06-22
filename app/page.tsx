@@ -1147,14 +1147,6 @@ export default function Home() {
               />
             </div>
 
-            <button
-              disabled={!state.scenario && !customUserMsg}
-              onClick={() => update({ step: 2 })}
-              className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 hover:bg-indigo-700 transition-colors"
-            >
-              Continue → Choose Policy
-            </button>
-
             <ReflectionSection
               questions={[
                 { key: "scenarioPatterns", label: "What kinds of patterns can you glean from the sample scenarios?" },
@@ -1163,6 +1155,14 @@ export default function Home() {
               answers={reflections}
               onChange={updateReflection}
             />
+
+            <button
+              disabled={!state.scenario && !customUserMsg}
+              onClick={() => update({ step: 2 })}
+              className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 hover:bg-indigo-700 transition-colors"
+            >
+              Continue → Choose Policy
+            </button>
           </div>
         )}
 
@@ -1298,6 +1298,16 @@ export default function Home() {
               </div>
             )}
 
+            <ReflectionSection
+              questions={[
+                { key: "policyGranularity", label: "Why do you think policies need to be specified so granularly?" },
+                { key: "policyScenarioInform", label: "If you tried to develop your own scenario, what aspects of the scenario most informed the policy development? What aspects were redundant or overly specific?" },
+                { key: "policyEditable", label: "Attempt to edit one of the policies. What makes a component editable?" },
+              ]}
+              answers={reflections}
+              onChange={updateReflection}
+            />
+
             <div className="flex gap-3">
               <button onClick={() => update({ step: 1 })} className="px-4 py-2.5 border rounded-lg text-sm text-slate-600 hover:bg-slate-50">← Back</button>
               <button
@@ -1308,16 +1318,6 @@ export default function Home() {
                 Continue → Translate
               </button>
             </div>
-
-            <ReflectionSection
-              questions={[
-                { key: "policyGranularity", label: "Why do you think policies need to be specified so granularly?" },
-                { key: "policyScenarioInform", label: "If you tried to develop your own scenario, what aspects of the scenario most informed the policy development? What aspects were redundant or overly specific?" },
-                { key: "policyEditable", label: "Attempt to edit one of the policies. What makes a component editable?" },
-              ]}
-              answers={reflections}
-              onChange={updateReflection}
-            />
           </div>
         )}
 
