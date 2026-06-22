@@ -34,6 +34,9 @@ async function ensureTable() {
     sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS policy_editable TEXT`,
     sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS other_tools TEXT`,
     sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS multilingual_diff TEXT`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS nonagentic_result_translated JSONB`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS agentic_result_translated JSONB`,
+    sql`ALTER TABLE workshop_responses ADD COLUMN IF NOT EXISTS target_language TEXT`,
   ];
   await Promise.all(migrations);
 }
@@ -55,6 +58,9 @@ export async function POST(req: NextRequest) {
       agenticScore,
       agenticResult,
       agenticEvents,
+      nonAgenticResultTranslated,
+      agenticResultTranslated,
+      targetLanguage,
       guardrailMode,
       judgeModel,
       // Step 1 reflections
@@ -78,6 +84,7 @@ export async function POST(req: NextRequest) {
         evaluator_name, scenario, policy_name, policy_text, model, llm_response,
         nonagentic_verdict, nonagentic_score, nonagentic_result,
         agentic_verdict, agentic_score, agentic_result, agentic_events,
+        nonagentic_result_translated, agentic_result_translated, target_language,
         guardrail_mode, judge_model,
         scenario_patterns, scenario_challenges,
         policy_granularity, policy_scenario_inform, policy_editable,
@@ -90,6 +97,9 @@ export async function POST(req: NextRequest) {
         ${agenticVerdict || null}, ${agenticScore ?? null},
         ${agenticResult ? JSON.stringify(agenticResult) : null},
         ${agenticEvents ? JSON.stringify(agenticEvents) : null},
+        ${nonAgenticResultTranslated ? JSON.stringify(nonAgenticResultTranslated) : null},
+        ${agenticResultTranslated ? JSON.stringify(agenticResultTranslated) : null},
+        ${targetLanguage || null},
         ${guardrailMode || null}, ${judgeModel || null},
         ${scenarioPatterns || null}, ${scenarioChallenges || null},
         ${policyGranularity || null}, ${policyScenarioInform || null}, ${policyEditable || null},

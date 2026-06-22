@@ -328,15 +328,6 @@ const STEP5_QUESTIONS = [
     key: "otherTools",
     label: "What other tools would you give an agentic guardrail?",
   },
-  {
-    key: "multilingualDiff",
-    label:
-      "If you chose non-English mode, what differences have you observed in guardrail judgments between English and non-English?",
-  },
-  {
-    key: "generalObservations",
-    label: "Any other general observations about the policy, the model response, or guardrail behavior?",
-  },
 ];
 
 function SubmitPanel({
@@ -345,9 +336,14 @@ function SubmitPanel({
   policyText,
   model,
   llmResponse,
+  llmResponseTranslated,
+  targetLanguage,
   nonAgenticResult,
   agenticResult,
   agenticEvents,
+  nonAgenticResultTranslated,
+  agenticResultTranslated,
+  agenticEventsTranslated,
   guardrailMode,
   judgeModel,
   reflections,
@@ -359,16 +355,20 @@ function SubmitPanel({
   policyText: string;
   model: string;
   llmResponse: string;
+  llmResponseTranslated: string;
+  targetLanguage: string;
   nonAgenticResult: GuardrailResult | null;
   agenticResult: GuardrailResult | null;
   agenticEvents: AgenticEvent[];
+  nonAgenticResultTranslated: GuardrailResult | null;
+  agenticResultTranslated: GuardrailResult | null;
+  agenticEventsTranslated: AgenticEvent[];
   guardrailMode: string;
   judgeModel: string;
   reflections: Record<string, string>;
   onReflectionChange: (key: string, val: string) => void;
   onSaved: (ev: SavedEvaluation) => void;
 }) {
-  const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -381,7 +381,7 @@ function SubmitPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          evaluatorName: name,
+          evaluatorName: null,
           scenario,
           policyName,
           policyText,
@@ -394,6 +394,9 @@ function SubmitPanel({
           agenticScore: agenticResult?.score ?? null,
           agenticResult,
           agenticEvents,
+          // Translated results (compare mode)
+          nonAgenticResultTranslated,
+          agenticResultTranslated,
           guardrailMode,
           judgeModel,
           // All reflections
@@ -413,17 +416,22 @@ function SubmitPanel({
       onSaved({
         id: Date.now().toString(),
         savedAt: new Date(),
-        evaluatorName: name,
+        evaluatorName: "",
         scenario,
         policy: policyName,
         policyText,
         model,
         llmResponse,
+        llmResponseTranslated,
+        targetLanguage,
         guardrailMode,
         judgeModel,
         nonAgenticResult,
         agenticResult,
         agenticEvents,
+        nonAgenticResultTranslated,
+        agenticResultTranslated,
+        agenticEventsTranslated,
         reflections: { ...reflections },
       });
       setSubmitted(true);
@@ -470,17 +478,6 @@ function SubmitPanel({
       ))}
 
       <div className="border-t pt-5 space-y-4">
-        <div>
-          <label className="text-sm font-medium text-slate-700 block mb-1">Your name (optional)</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Jane Smith"
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          />
-        </div>
-
         {submitError && (
           <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{submitError}</p>
         )}
@@ -511,11 +508,18 @@ interface SavedEvaluation {
   policyText: string;
   model: string;
   llmResponse: string;
+  llmResponseTranslated: string;
+  targetLanguage: string;
   guardrailMode: string;
   judgeModel: string;
+  // English results
   nonAgenticResult: GuardrailResult | null;
   agenticResult: GuardrailResult | null;
   agenticEvents: AgenticEvent[];
+  // Translated results (when compare mode was used)
+  nonAgenticResultTranslated: GuardrailResult | null;
+  agenticResultTranslated: GuardrailResult | null;
+  agenticEventsTranslated: AgenticEvent[];
   reflections: Record<string, string>;
 }
 
@@ -541,8 +545,6 @@ const REFLECTION_GROUPS = [
     questions: [
       { key: "agenticDiff", label: "How do the guardrails differ between agentic and non-agentic judgment?" },
       { key: "otherTools", label: "What other tools would you give an agentic guardrail?" },
-      { key: "multilingualDiff", label: "What differences have you observed between English and non-English guardrail judgments?" },
-      { key: "generalObservations", label: "General observations" },
     ],
   },
 ];
@@ -551,9 +553,16 @@ const REFLECTION_GROUPS = [
 function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
 
-  const verdicts = [
+  const hasTranslated = !!(ev.nonAgenticResultTranslated || ev.agenticResultTranslated);
+
+  const enVerdicts = [
     ev.nonAgenticResult && { label: "Non-Agentic", result: ev.nonAgenticResult },
     ev.agenticResult && { label: "Agentic", result: ev.agenticResult },
+  ].filter(Boolean) as { label: string; result: GuardrailResult }[];
+  const allVerdicts = [
+    ...enVerdicts,
+    ev.nonAgenticResultTranslated && { label: `Non-Agentic (${ev.targetLanguage})`, result: ev.nonAgenticResultTranslated },
+    ev.agenticResultTranslated && { label: `Agentic (${ev.targetLanguage})`, result: ev.agenticResultTranslated },
   ].filter(Boolean) as { label: string; result: GuardrailResult }[];
 
   const time = ev.savedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -561,16 +570,18 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
 
   const hasReflections = Object.values(ev.reflections).some((v) => v?.trim());
 
-  // Collect all websites used (from agentic tool calls + url_checks)
-  const websitesUsed: string[] = [];
-  ev.agenticEvents
-    .filter((e) => e.type === "tool_call")
-    .forEach((e) => {
-      if (e.type === "tool_call" && e.args?.url) websitesUsed.push(e.args.url);
+  // Collect websites from English agentic run
+  const collectWebsites = (events: AgenticEvent[], result: GuardrailResult | null) => {
+    const urls: string[] = [];
+    events.filter((e) => e.type === "tool_call").forEach((e) => {
+      if (e.type === "tool_call" && e.args?.url && !urls.includes(e.args.url)) urls.push(e.args.url);
     });
-  ev.agenticResult?.url_checks?.forEach((u) => {
-    if (!websitesUsed.includes(u.url)) websitesUsed.push(u.url);
-  });
+    result?.url_checks?.forEach((u) => { if (!urls.includes(u.url)) urls.push(u.url); });
+    return urls;
+  };
+  const websitesEn = collectWebsites(ev.agenticEvents, ev.agenticResult);
+  const websitesTr = collectWebsites(ev.agenticEventsTranslated, ev.agenticResultTranslated);
+  const allWebsites = [...websitesEn, ...websitesTr.filter((u) => !websitesEn.includes(u))];
 
   return (
     <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
@@ -588,8 +599,8 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
             {ev.evaluatorName && <span className="text-slate-500 font-medium">{ev.evaluatorName}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {verdicts.map(({ label, result }) => (
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {allVerdicts.map(({ label, result }) => (
             <VerdictBadge key={label} verdict={result.overall_verdict} score={result.score} />
           ))}
           <span className="text-slate-400 text-xs ml-1">{open ? "▲" : "▼"}</span>
@@ -629,30 +640,58 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
             </section>
           )}
 
-          {/* Guardrail judgments */}
-          <section>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Guardrail Judgments</p>
-            <div className={`grid gap-6 ${verdicts.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-              {ev.nonAgenticResult && (
-                <GuardrailPanel label="🔍 Non-Agentic" result={ev.nonAgenticResult} />
-              )}
-              {ev.agenticResult && (
-                <GuardrailPanel label="⚡ Agentic" result={ev.agenticResult} events={ev.agenticEvents} />
-              )}
-            </div>
-          </section>
+          {/* Guardrail judgments — English */}
+          {(ev.nonAgenticResult || ev.agenticResult) && (
+            <section>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
+                Guardrail Judgments{hasTranslated ? " — English" : ""}
+              </p>
+              <div className={`grid gap-6 ${enVerdicts.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+                {ev.nonAgenticResult && (
+                  <GuardrailPanel label="Non-Agentic" result={ev.nonAgenticResult} />
+                )}
+                {ev.agenticResult && (
+                  <GuardrailPanel label="Agentic" result={ev.agenticResult} events={ev.agenticEvents} />
+                )}
+              </div>
+            </section>
+          )}
 
-          {/* Websites used */}
-          {websitesUsed.length > 0 && (
+          {/* Guardrail judgments — Translated */}
+          {hasTranslated && (
+            <section>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
+                Guardrail Judgments — {ev.targetLanguage}
+              </p>
+              <div className={`grid gap-6 ${(ev.nonAgenticResultTranslated && ev.agenticResultTranslated) ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+                {ev.nonAgenticResultTranslated && (
+                  <GuardrailPanel label="Non-Agentic" result={ev.nonAgenticResultTranslated} />
+                )}
+                {ev.agenticResultTranslated && (
+                  <GuardrailPanel label="Agentic" result={ev.agenticResultTranslated} events={ev.agenticEventsTranslated} />
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Websites used for claim verification */}
+          {allWebsites.length > 0 && (
             <section>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
                 Websites Used for Claim Verification
               </p>
               <div className="space-y-1">
-                {websitesUsed.map((url, i) => (
-                  <div key={i} className="text-xs font-mono text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded truncate">
-                    {url}
-                  </div>
+                {allWebsites.map((url, i) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-xs font-mono text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors"
+                  >
+                    <span className="shrink-0">🔗</span>
+                    <span className="truncate">{url}</span>
+                  </a>
                 ))}
               </div>
             </section>
@@ -699,11 +738,10 @@ function WelcomeScreen({ onEnter }: { onEnter: () => void }) {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-6 py-16">
       <div className="max-w-2xl w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-10 space-y-8">
-        {/* Logo / title */}
+        {/* Title */}
         <div className="text-center space-y-2">
-          <div className="text-5xl">🛡️</div>
           <h1 className="text-2xl font-bold text-slate-900">Guardrails Demo</h1>
-          <p className="text-sm text-slate-500">Agentic vs Non-Agentic Evaluation — Mozilla.ai Workshop</p>
+          <p className="text-sm text-slate-500">Contextual Evaluation of LLM Guardrails Across Languages and Agentic Systems</p>
         </div>
 
         {/* Welcome message */}
@@ -978,8 +1016,8 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-lg font-bold text-slate-900">🛡️ Guardrails Demo</h1>
-              <p className="text-xs text-slate-500">Agentic vs Non-Agentic Evaluation — Mozilla.ai Workshop</p>
+              <h1 className="text-lg font-bold text-slate-900">Guardrails Demo</h1>
+              <p className="text-xs text-slate-500">Contextual Evaluation of LLM Guardrails Across Languages and Agentic Systems</p>
             </div>
             {savedEvaluations.length > 0 && (
               <button
@@ -1488,7 +1526,7 @@ export default function Home() {
                   </div>
                 )}
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-start gap-3">
-                  <span className="text-xl">🛡️</span>
+                  <span className="text-xl">✓</span>
                   <div>
                     <p className="text-sm font-semibold text-indigo-800">Ready to evaluate</p>
                     <p className="text-sm text-indigo-700 mt-0.5">
@@ -1618,7 +1656,7 @@ export default function Home() {
               disabled={loading}
               className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm disabled:opacity-50 hover:bg-indigo-700 flex items-center gap-2"
             >
-              {loading ? <><span className="animate-spin">↻</span> Evaluating...</> : "🛡️ Run Guardrail Evaluation"}
+              {loading ? <><span className="animate-spin">↻</span> Evaluating...</> : "Run Guardrail Evaluation"}
             </button>
 
             {/* Live streaming indicator */}
@@ -1678,9 +1716,14 @@ export default function Home() {
                     policyText={policyDraft || (state.policy?.text ?? "")}
                     model={MODELS.find((m) => m.id === state.selectedModel)?.name ?? state.selectedModel}
                     llmResponse={state.generatedResponse}
+                    llmResponseTranslated={state.generatedResponseTranslated}
+                    targetLanguage={state.targetLanguage}
                     nonAgenticResult={state.nonAgenticResult}
                     agenticResult={state.agenticResult}
                     agenticEvents={state.agenticEvents}
+                    nonAgenticResultTranslated={state.nonAgenticResultTranslated}
+                    agenticResultTranslated={state.agenticResultTranslated}
+                    agenticEventsTranslated={state.agenticEventsTranslated}
                     guardrailMode={state.guardrailMode}
                     judgeModel={judgeModel}
                     reflections={reflections}

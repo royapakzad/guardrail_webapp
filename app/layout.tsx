@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Guardrails Demo — Mozilla.ai Workshop",
-  description: "Interactive demo: agentic vs non-agentic guardrails across domains",
+  title: "Guardrails Demo — Contextual Evaluation of LLM Guardrails Across Languages and Agentic Systems",
+  description: "Contextual Evaluation of LLM Guardrails Across Languages and Agentic Systems",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
