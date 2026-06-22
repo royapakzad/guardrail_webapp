@@ -519,6 +519,51 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
   );
 }
 
+// ── Welcome / landing screen ─────────────────────────────────────────────────
+function WelcomeScreen({ onEnter }: { onEnter: () => void }) {
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-6 py-16">
+      <div className="max-w-2xl w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-10 space-y-8">
+        {/* Logo / title */}
+        <div className="text-center space-y-2">
+          <div className="text-5xl">🛡️</div>
+          <h1 className="text-2xl font-bold text-slate-900">Guardrails Demo</h1>
+          <p className="text-sm text-slate-500">Agentic vs Non-Agentic Evaluation — Mozilla.ai Workshop</p>
+        </div>
+
+        {/* Welcome message */}
+        <div className="space-y-4 text-slate-700 leading-relaxed">
+          <p>
+            Thank you for joining our tutorial! As you go through the activity we have designed for
+            you, we highly recommend you go through the reflection questions. Your responses will be
+            saved and you can access them while your evaluation session is done with the group.
+          </p>
+
+          {/* Language encouragement callout */}
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex gap-3">
+            <span className="text-2xl shrink-0">🌐</span>
+            <p className="text-sm text-indigo-800">
+              If you are confident in using a language other than English, we strongly encourage you
+              to conduct the experiment in that language and compare both the LLM response and the
+              guardrails judgment in English vs. the other language.
+            </p>
+          </div>
+        </div>
+
+        {/* Enter button */}
+        <div className="text-center">
+          <button
+            onClick={onEnter}
+            className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold text-base hover:bg-indigo-700 transition-colors shadow-sm"
+          >
+            Start the Tutorial →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main wizard page ────────────────────────────────────────────────────────
 
 const LANGS = [
@@ -555,6 +600,7 @@ export default function Home() {
     agenticEventsTranslated: [],
   });
 
+  const [showWelcome, setShowWelcome] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [judgeModel, setJudgeModel] = useState("gpt-5-nano");
@@ -741,6 +787,10 @@ export default function Home() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   const domainList: Domain[] = ["financial", "humanitarian", "legal", "healthcare", "cybersecurity"];
+
+  if (showWelcome) {
+    return <WelcomeScreen onEnter={() => setShowWelcome(false)} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
