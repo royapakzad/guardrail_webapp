@@ -35,7 +35,7 @@ function StepDot({ step, current, completed }: { step: number; current: number; 
 }
 
 // ── Verdict badge ───────────────────────────────────────────────────────────
-function VerdictBadge({ verdict, score }: { verdict: string; score: number }) {
+function VerdictBadge({ verdict }: { verdict: string }) {
   const color =
     verdict === "PASS"
       ? "bg-green-100 text-green-800 border-green-300"
@@ -45,7 +45,6 @@ function VerdictBadge({ verdict, score }: { verdict: string; score: number }) {
   return (
     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold border ${color}`}>
       {verdict === "PASS" ? "✓" : verdict === "FAIL" ? "✗" : "~"} {verdict}
-      <span className="text-xs font-normal opacity-75">({score.toFixed(2)})</span>
     </span>
   );
 }
@@ -237,7 +236,7 @@ function GuardrailPanel({
             {modeLabel}
           </span>
         </div>
-        <VerdictBadge verdict={result.overall_verdict} score={result.score} />
+        <VerdictBadge verdict={result.overall_verdict} />
       </div>
 
       <div className="p-5 space-y-4">
@@ -635,7 +634,7 @@ function SavedEvaluationCard({ ev, onDelete }: { ev: SavedEvaluation; onDelete: 
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           {allVerdicts.map(({ label, result }) => (
-            <VerdictBadge key={label} verdict={result.overall_verdict} score={result.score} />
+            <VerdictBadge key={label} verdict={result.overall_verdict} />
           ))}
           <span className="text-slate-400 text-xs ml-1">{open ? "▲" : "▼"}</span>
         </div>
