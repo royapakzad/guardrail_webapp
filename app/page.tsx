@@ -361,6 +361,11 @@ const STEP5_QUESTIONS = [
     key: "otherTools",
     label: "What other tools would you give an agentic guardrail?",
   },
+  {
+    key: "multilingualDiff",
+    label:
+      "If you used language-pair comparison, what differences have you noticed in guardrail judgment between English response judgments and non-English response judgments?",
+  },
 ];
 
 function SubmitPanel({
@@ -578,6 +583,7 @@ const REFLECTION_GROUPS = [
     questions: [
       { key: "agenticDiff", label: "How do the guardrails differ between agentic and non-agentic judgment?" },
       { key: "otherTools", label: "What other tools would you give an agentic guardrail?" },
+      { key: "multilingualDiff", label: "If you used language-pair comparison, what differences have you noticed in guardrail judgment between English response judgments and non-English response judgments?" },
     ],
   },
 ];
